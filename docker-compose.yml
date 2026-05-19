@@ -1,0 +1,22 @@
+services:
+  web:
+    build: .
+    command: npm run start
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - worker
+
+  worker:
+    build: .
+    command: node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts
+    env_file:
+      - .env
+    environment:
+      WORKER_ID: worker-main
+    volumes:
+      - ./data:/app/data

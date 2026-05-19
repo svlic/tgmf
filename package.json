@@ -6,19 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts",
+    "worker:dev": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.10.0",
+    "clsx": "^2.1.1",
+    "input": "^1.0.1",
+    "jose": "^6.2.3",
+    "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "tailwind-merge": "^3.6.0",
+    "telegram": "^2.26.22",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "tsx": "^4.22.2",
     "typescript": "^5"
   }
 }
