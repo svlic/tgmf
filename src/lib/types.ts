@@ -1,0 +1,112 @@
+export type AdminSessionPayload = {
+  authenticated: true;
+  issuedAt: number;
+};
+
+export type LoginAttemptStatus = "success" | "failure";
+
+export type JobStatus =
+  | "draft"
+  | "pending"
+  | "claimed"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type JobMode = "forward" | "copy";
+export type JobOrder = "asc" | "desc";
+export type AlbumStrategy = "full_group" | "captioned_only";
+export type MessageRecordStatus = "pending" | "sent" | "skipped" | "failed";
+
+export type WorkerStatus = "idle" | "running" | "stale";
+
+export type TelegramLoginState =
+  | "logged_out"
+  | "awaiting_code"
+  | "awaiting_password"
+  | "ready"
+  | "reauth_required";
+
+export type TelegramAccountRow = {
+  id: string;
+  label: string;
+  phone_number: string;
+  api_id_override: string | null;
+  api_hash_override_encrypted: string | null;
+  session_encrypted: string | null;
+  login_state: TelegramLoginState;
+  login_hint: string | null;
+  telegram_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_connected_at: string | null;
+};
+
+export type SyncJobRow = {
+  id: string;
+  account_id: string;
+  source_channel_ref: string;
+  target_channel_ref: string;
+  start_message_id: number;
+  end_message_id: number;
+  job_order: JobOrder;
+  mode: JobMode;
+  album_strategy: AlbumStrategy;
+  delay_seconds: number;
+  status: JobStatus;
+  total_messages: number;
+  processed_messages: number;
+  succeeded_messages: number;
+  skipped_messages: number;
+  failed_messages: number;
+  next_message_id: number | null;
+  worker_id: string | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  cancel_requested_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MessageTransferRecordRow = {
+  id: string;
+  job_id: string;
+  source_message_id: number;
+  target_message_id: number | null;
+  media_group_id: string | null;
+  status: MessageRecordStatus;
+  error_reason: string | null;
+  processed_at: string | null;
+  created_at: string;
+};
+
+export type DialogCacheRow = {
+  id: string;
+  account_id: string;
+  peer_id: string;
+  title: string;
+  username: string | null;
+  entity_type: string;
+  is_public: number;
+  raw_json: string;
+  fetched_at: string;
+};
+
+export type WorkerHeartbeatRow = {
+  worker_id: string;
+  status: WorkerStatus;
+  current_job_id: string | null;
+  heartbeat_at: string;
+  started_at: string;
+  details_json: string | null;
+};
+
+export type AppSettingRow = {
+  key: string;
+  value_json: string;
+  updated_at: string;
+};
