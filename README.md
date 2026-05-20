@@ -91,18 +91,78 @@ npm run worker
 
 ## Docker Compose 部署
 
-构建并启动全部服务：
+当前仓库通过 `/opt/ocode/tgmf/docker-compose.yml` 启动两个服务，因此在执行 Compose 命令前需要先准备运行环境。
+
+### 1. 准备环境变量
+
+Compose 文件使用：
+
+```yaml
+env_file:
+  - .env
+```
+
+因此必须先在项目根目录准备 `/opt/ocode/tgmf/.env` 文件。最简单的方式是：
+
+```bash
+cp .env.example .env
+```
+
+然后至少补齐以下关键配置：
+
+- `TELEGRAM_API_ID`
+- `TELEGRAM_API_HASH`
+- `APP_ENCRYPTION_KEY`
+- `ADMIN_PASSWORD`
+- `APP_BASE_URL`
+
+其中：
+
+- `APP_BASE_URL` 在本地 Docker 部署时通常应设为 `http://localhost:3000`
+- `ADMIN_PASSWORD` 生产环境建议使用 bcrypt 哈希，不建议直接使用明文
+- `APP_ENCRYPTION_KEY` 应使用高强度随机值，不能留空
+
+### 2. 准备数据目录
+
+Compose 会把宿主机的 `./data` 挂载到容器内的 `/app/data`：
+
+```yaml
+volumes:
+  - ./data:/app/data
+```
+
+因此建议在启动前先确保项目根目录下存在可写的数据目录：
+
+```bash
+mkdir -p data
+```
+
+SQLite 数据库文件会保存在这个目录中，Web 和 Worker 也会通过这个挂载目录共享同一份数据库。
+
+### 3. 启动服务
+
+完成以上准备后，再执行：
 
 ```bash
 docker compose up --build
 ```
 
-启动后包含两个核心服务：
+启动后会包含两个核心服务：
 
-- `web`：运行在 `3000` 端口上的 Next.js 管理后台
-- `worker`：独立运行的轮询 Worker，和 Web 服务共享同一个 SQLite 数据库文件
+- `web`：运行 `npm run start`，提供 `3000` 端口上的 Next.js 管理后台
+- `worker`：运行独立 Worker 进程，负责轮询并执行待处理的同步任务
 
-项目中的 `./data` 目录会挂载到两个容器中，以便二者共享同一份 SQLite 数据库。
+这两个服务使用同一个镜像构建，但启动命令不同，并且都会读取同一个 `.env` 文件以及共享的 `./data` 数据目录。
+
+### 4. 检查服务状态
+
+启动后建议再查看日志，确认 Web 和 Worker 都已正常运行：
+
+```bash
+docker compose logs -f web worker
+```
+
+如果一切正常，就可以通过 [http://localhost:3000](http://localhost:3000) 访问后台，并使用 `.env` 中配置的 `ADMIN_PASSWORD` 登录。
 
 ## 当前行为与 v1 已知限制
 
