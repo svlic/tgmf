@@ -1,27 +1,31 @@
-# Telegram Message Transfer
+# Telegram 消息迁移系统
 
-Telegram Channel Message Transfer management system built with Next.js, TypeScript, SQLite, GramJS, and a standalone worker process.
+这是一个用于管理 Telegram 频道消息迁移任务的后台系统，基于 Next.js、TypeScript、SQLite、GramJS，以及独立运行的 Worker 进程构建。
 
-## What it does
+## 项目功能
 
-- Password-protected admin console
-- Multiple Telegram user accounts with saved sessions
-- Phone login, code verification, and 2FA password flow
-- Dialog and channel cache per Telegram account
-- Sync jobs for forwarding or copying a message ID range between channels
-- Worker heartbeat and per-message transfer records
-- Single-machine deployment with Docker Compose
+本项目主要提供以下能力：
 
-## Important constraints
+- 带密码保护的管理后台
+- 支持管理多个 Telegram 用户账号，并保存会话
+- 支持手机号登录、验证码校验和两步验证密码流程
+- 按 Telegram 账号缓存会话列表与频道列表
+- 支持创建消息同步任务，在频道之间按消息 ID 区间执行转发或复制
+- 记录 Worker 心跳状态与逐条消息迁移结果
+- 支持基于 Docker Compose 的单机部署
 
-- The app does not bypass Telegram permissions.
-- Private channels are only accessible if the logged-in Telegram account already has access.
-- Protected content and no-forward restrictions are not bypassed.
-- Sensitive values such as `ADMIN_PASSWORD`, `APP_ENCRYPTION_KEY`, Telegram API hashes, login sessions, codes, and 2FA passwords must stay server-side.
+## 重要限制说明
 
-## Environment variables
+在使用前，请注意以下限制：
 
-Copy `.env.example` to `.env` and fill in real values:
+- 本项目不会绕过 Telegram 的权限体系。
+- 私有频道只有在当前登录的 Telegram 账号本身已经具备访问权限时才能访问。
+- 对于受保护内容或禁止转发的内容，系统不会绕过 Telegram 限制。
+- `ADMIN_PASSWORD`、`APP_ENCRYPTION_KEY`、Telegram API Hash、登录会话、验证码和两步验证密码等敏感信息必须始终保留在服务端，不能暴露到客户端。
+
+## 环境变量
+
+请将 `.env.example` 复制为 `.env`，并填写真实配置：
 
 ```env
 DATABASE_URL=data/app.db
@@ -33,79 +37,86 @@ APP_BASE_URL=http://localhost:3000
 WORKER_ID=
 ```
 
-### Notes
+### 变量说明
 
-- `DATABASE_URL` should point to the SQLite database file shared by the web app and worker.
-- `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` act as defaults for accounts that do not override them.
-- `APP_ENCRYPTION_KEY` is used to encrypt stored secrets at rest and should be a strong random 32-byte secret.
-- `ADMIN_PASSWORD` protects the admin console. It may be plain text or a bcrypt hash; production deployments should prefer a bcrypt hash.
-- `WORKER_ID` is optional for local runs; Docker Compose sets it for the worker service.
+- `DATABASE_URL`：SQLite 数据库文件路径，Web 应用和 Worker 需要共享同一个数据库文件。
+- `TELEGRAM_API_ID` 与 `TELEGRAM_API_HASH`：Telegram API 默认配置。当某个账号没有单独覆盖配置时，会使用这里的默认值。
+- `APP_ENCRYPTION_KEY`：用于加密存储敏感信息，建议使用强随机生成的 32 字节密钥。
+- `ADMIN_PASSWORD`：管理后台登录密码。可以是明文，也可以是 bcrypt 哈希。生产环境建议使用 bcrypt 哈希。
+- `WORKER_ID`：Worker 实例标识。本地开发时可选；使用 Docker Compose 时通常由容器环境自动设置。
 
-## Local development
+## 本地开发
 
-Install dependencies:
+先安装依赖：
 
 ```bash
 npm install
 ```
 
-Start the web app:
+启动 Web 管理后台：
 
 ```bash
 npm run dev
 ```
 
-Start the worker in a separate shell:
+在另一个终端启动 Worker：
 
 ```bash
 npm run worker:dev
 ```
 
-The `worker:dev` script loads local values from `.env.local` during development. The production-safe `worker` script expects values to come from `.env` or the surrounding process environment.
+说明：
 
-Open [http://localhost:3000](http://localhost:3000) and log in with `ADMIN_PASSWORD`.
+- `worker:dev` 会在开发环境下加载 `.env.local` 中的本地配置。
+- 生产可用的 `worker` 命令不会强制加载 `.env.local`，它依赖 `.env` 或外部进程环境变量。
 
-## Production build
+启动后，可通过 [http://localhost:3000](http://localhost:3000) 打开后台，并使用 `ADMIN_PASSWORD` 登录。
+
+## 生产构建与运行
+
+构建并启动 Web 服务：
 
 ```bash
 npm run build
 npm run start
 ```
 
-The worker still runs separately:
+Worker 仍需单独启动：
 
 ```bash
 npm run worker
 ```
 
-This command does not force-load `.env.local`; set environment variables through `.env` or your process manager before starting it.
+该命令不会自动加载 `.env.local`，请在启动前通过 `.env` 或进程管理器注入环境变量。
 
-## Docker Compose
+## Docker Compose 部署
 
-Build and start both services:
+构建并启动全部服务：
 
 ```bash
 docker compose up --build
 ```
 
-This starts:
+启动后包含两个核心服务：
 
-- `web`: Next.js admin console on port `3000`
-- `worker`: standalone polling worker sharing the same SQLite file
+- `web`：运行在 `3000` 端口上的 Next.js 管理后台
+- `worker`：独立运行的轮询 Worker，和 Web 服务共享同一个 SQLite 数据库文件
 
-The `./data` directory is mounted into both containers so they share the same SQLite database.
+项目中的 `./data` 目录会挂载到两个容器中，以便二者共享同一份 SQLite 数据库。
 
-## Current behavior and v1 limitations
+## 当前行为与 v1 已知限制
 
-- Worker design is single-machine and single-worker.
-- `copy` mode currently supports text messages reliably. Media copy paths are not fully implemented yet.
-- Album handling is partial:
-  - `captioned_only` is implemented in a minimal form
-  - `full_group` still needs deeper grouped-media handling
-- Pending Telegram login state for code verification is currently stored in process memory during the login flow.
-- The worker processes pending jobs, writes heartbeats, records per-message outcomes, and respects pause/cancel state checks between messages.
+当前版本有以下实现边界：
 
-## Main scripts
+- Worker 设计为单机、单 Worker 模式。
+- `copy` 模式目前对纯文本消息支持较稳定，媒体消息的复制链路尚未完全实现。
+- 相册消息处理能力仍不完整：
+  - `captioned_only` 仅做了较基础的实现
+  - `full_group` 仍需要更完整的分组媒体处理逻辑
+- Telegram 登录流程中，等待验证码确认的临时状态当前保存在进程内存中。
+- Worker 会处理待执行任务、写入心跳、记录每条消息的处理结果，并在每条消息之间检查暂停或取消状态。
+
+## 常用脚本
 
 ```bash
 npm run dev
@@ -116,20 +127,20 @@ npm run worker
 npm run worker:dev
 ```
 
-## Project layout
+## 项目结构
 
-- `/opt/ocode/tgmf/src/app` - Next.js app routes and API routes
-- `/opt/ocode/tgmf/src/components` - dashboard UI components
-- `/opt/ocode/tgmf/src/lib` - auth, env, crypto, db, validation, Telegram services
-- `/opt/ocode/tgmf/worker/index.ts` - standalone worker loop
-- `/opt/ocode/tgmf/data` - SQLite database location
+- `/opt/ocode/tgmf/src/app`：Next.js 路由与 API 路由
+- `/opt/ocode/tgmf/src/components`：后台界面组件
+- `/opt/ocode/tgmf/src/lib`：认证、环境变量、加密、数据库、校验、Telegram 服务等基础模块
+- `/opt/ocode/tgmf/worker/index.ts`：独立 Worker 主循环
+- `/opt/ocode/tgmf/data`：SQLite 数据库存放目录
 
-## Operational flow
+## 基本使用流程
 
-1. Log into the admin console.
-2. Create a Telegram account entry.
-3. Start Telegram login with a phone number.
-4. Complete verification code and 2FA if required.
-5. Refresh dialogs/channels for that account.
-6. Create a sync job with source, target, mode, order, and message ID range.
-7. Run the worker and monitor job progress plus heartbeat status.
+1. 登录管理后台。
+2. 创建一个 Telegram 账号记录。
+3. 使用手机号发起 Telegram 登录。
+4. 完成验证码校验，如有需要再完成两步验证。
+5. 为该账号刷新会话或频道列表。
+6. 创建同步任务，设置源频道、目标频道、执行模式、顺序和消息 ID 范围。
+7. 启动 Worker，并在后台查看任务进度与心跳状态。
