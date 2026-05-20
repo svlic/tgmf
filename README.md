@@ -41,7 +41,6 @@ TELEGRAM_API_ID=
 TELEGRAM_API_HASH=
 APP_ENCRYPTION_KEY=
 ADMIN_PASSWORD=
-APP_BASE_URL=http://localhost:3000
 ```
 
 说明：
@@ -49,7 +48,6 @@ APP_BASE_URL=http://localhost:3000
 - `TELEGRAM_API_ID` 和 `TELEGRAM_API_HASH`：你的 Telegram API 配置
 - `APP_ENCRYPTION_KEY`：用于加密数据库中的敏感信息，建议使用强随机 32 字节密钥
 - `ADMIN_PASSWORD`：后台登录密码，生产环境建议使用 bcrypt 哈希
-- `APP_BASE_URL`：本地 Docker 部署一般保持 `http://localhost:3000`
 - `DATABASE_URL`：SQLite 文件路径，默认会落在挂载出来的 `data/` 目录里
 
 ### 2. 准备数据目录
@@ -80,7 +78,7 @@ docker compose up --build
 docker compose logs -f web worker
 ```
 
-如果启动成功，就可以通过 [http://localhost:3000](http://localhost:3000) 访问后台，并使用 `.env` 中配置的 `ADMIN_PASSWORD` 登录。
+如果启动成功，就可以通过你实际对外暴露的后台地址访问，例如 `http://服务器IP:3000` 或反向代理后的域名地址，并使用 `.env` 中配置的 `ADMIN_PASSWORD` 登录。
 
 ## 基本使用流程
 
