@@ -5,7 +5,7 @@ services:
     env_file:
       - .env
     ports:
-      - "53005:3000"
+      - "54001:3000"
     volumes:
       - ./data:/app/data
     depends_on:
