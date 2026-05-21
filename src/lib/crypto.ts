@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
-import { env } from "@/lib/env";
+import { getSecretEnv } from "@/lib/env";
 import type { AdminSessionPayload } from "@/lib/types";
 
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
@@ -8,7 +8,7 @@ const JWT_AUDIENCE = "tgmf-admin";
 const JWT_ISSUER = "tgmf";
 
 function getKeyMaterial() {
-  return createHash("sha256").update(env.APP_ENCRYPTION_KEY).digest();
+  return createHash("sha256").update(getSecretEnv().APP_ENCRYPTION_KEY).digest();
 }
 
 export function encryptString(plainText: string) {
@@ -40,8 +40,6 @@ export function decryptString(payload: string) {
   return decrypted.toString("utf8");
 }
 
-const jwtSecret = getKeyMaterial();
-
 export async function signAdminSession(payload: AdminSessionPayload) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -49,11 +47,11 @@ export async function signAdminSession(payload: AdminSessionPayload) {
     .setIssuer(JWT_ISSUER)
     .setAudience(JWT_AUDIENCE)
     .setExpirationTime("7d")
-    .sign(jwtSecret);
+    .sign(getKeyMaterial());
 }
 
 export async function verifyAdminSession(token: string) {
-  const result = await jwtVerify<AdminSessionPayload>(token, jwtSecret, {
+  const result = await jwtVerify<AdminSessionPayload>(token, getKeyMaterial(), {
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
   });

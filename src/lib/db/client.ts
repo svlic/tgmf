@@ -1,29 +1,39 @@
 import Database from "better-sqlite3";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import { env } from "@/lib/env";
+import { getBaseEnv } from "@/lib/env";
 import { schemaStatements } from "@/lib/db/schema";
 
 function resolveDatabasePath() {
-  if (env.DATABASE_URL === ":memory:") {
-    return env.DATABASE_URL;
+  const { DATABASE_URL } = getBaseEnv();
+
+  if (DATABASE_URL === ":memory:") {
+    return DATABASE_URL;
   }
 
-  return isAbsolute(env.DATABASE_URL)
-    ? env.DATABASE_URL
-    : resolve(process.cwd(), env.DATABASE_URL);
+  return isAbsolute(DATABASE_URL)
+    ? DATABASE_URL
+    : resolve(process.cwd(), DATABASE_URL);
 }
 
-const databasePath = resolveDatabasePath();
+let database: Database.Database | null = null;
 
-if (databasePath !== ":memory:") {
-  mkdirSync(dirname(databasePath), { recursive: true });
-}
+export function getDb() {
+  if (!database) {
+    const databasePath = resolveDatabasePath();
 
-export const db = new Database(databasePath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+    if (databasePath !== ":memory:") {
+      mkdirSync(dirname(databasePath), { recursive: true });
+    }
 
-for (const statement of schemaStatements) {
-  db.exec(statement);
+    database = new Database(databasePath);
+    database.pragma("journal_mode = WAL");
+    database.pragma("foreign_keys = ON");
+
+    for (const statement of schemaStatements) {
+      database.exec(statement);
+    }
+  }
+
+  return database;
 }
