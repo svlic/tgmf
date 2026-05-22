@@ -13,7 +13,17 @@ type FormState = {
   success: string | null;
 };
 
-async function submitJson(url: string, body: unknown, method = "POST") {
+type JsonResult<TData = unknown> =
+  | {
+      ok: true;
+      data: TData;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+async function submitJson<TData = unknown>(url: string, body: unknown, method = "POST"): Promise<JsonResult<TData>> {
   const response = await fetch(url, {
     method,
     headers: {
@@ -21,9 +31,31 @@ async function submitJson(url: string, body: unknown, method = "POST") {
       "x-tgmf-csrf": window.location.host,
     },
     body: JSON.stringify(body),
+    credentials: "same-origin",
   });
 
-  return response.json();
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    if (response.redirected) {
+      window.location.href = response.url;
+      return { ok: false, error: "Redirecting to login" };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      window.location.href = "/login";
+      return { ok: false, error: "Redirecting to login" };
+    }
+
+    throw new Error(`Unexpected response format (${response.status})`);
+  }
+
+  const result: JsonResult<TData> = await response.json();
+
+  if ((response.status === 401 || response.status === 403) && !result.ok) {
+    window.location.href = "/login";
+  }
+
+  return result;
 }
 
 function FormFeedback({ state }: { state: FormState }) {
@@ -258,7 +290,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
         variant="secondary"
         size="sm"
         onClick={async () => {
-          const result = await submitJson(`/api/accounts/${accountId}/start-login`, {});
+          const result = await submitJson<{ phoneCodeHash: string }>(`/api/accounts/${accountId}/start-login`, {});
           setMessage(result.ok ? `Code requested: ${result.data.phoneCodeHash}` : result.error);
         }}
       >
@@ -273,7 +305,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
           if (!phoneCode || !phoneCodeHash) {
             return;
           }
-          const result = await submitJson(`/api/accounts/${accountId}/verify-code`, { phoneCode, phoneCodeHash });
+          const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode, phoneCodeHash });
           setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
         }}
       >
@@ -287,7 +319,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
           if (!password) {
             return;
           }
-          const result = await submitJson(`/api/accounts/${accountId}/verify-password`, { password });
+          const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-password`, { password });
           setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
         }}
       >
