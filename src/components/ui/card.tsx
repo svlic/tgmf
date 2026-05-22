@@ -5,7 +5,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-950/5",
+        "surface-glass surface-panel overflow-hidden rounded-[var(--radius-xl)] border border-border/70 text-card-foreground shadow-[0_24px_70px_-34px_color-mix(in_oklab,var(--foreground)_20%,transparent)]",
         className,
       )}
       {...props}
@@ -14,15 +14,15 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-1.5 border-b border-slate-100 px-6 py-5", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-2 border-b border-border/70 px-6 py-5", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn("text-lg font-semibold tracking-tight text-slate-950", className)} {...props} />;
+  return <h2 className={cn("text-lg font-semibold tracking-tight text-foreground", className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-sm leading-6 text-slate-500", className)} {...props} />;
+  return <p className={cn("text-sm leading-6 text-muted-foreground", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -30,5 +30,5 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
 }
 
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("border-t border-slate-100 px-6 py-4", className)} {...props} />;
+  return <div className={cn("border-t border-border/70 px-6 py-4", className)} {...props} />;
 }
