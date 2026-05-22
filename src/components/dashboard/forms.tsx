@@ -140,7 +140,7 @@ export function AccountCreateForm() {
         <Input id="apiHashOverride" name="apiHashOverride" placeholder="Optional API hash override" />
         <FieldDescription>Useful when isolating one account from the default app credentials.</FieldDescription>
       </Field>
-      <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
         <Button type="submit">Add account</Button>
         <FormFeedback state={state} />
       </div>
@@ -231,7 +231,7 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
         <Input id="delaySeconds" name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="2" required />
         <FieldDescription>Throttle sends when the target channel is rate sensitive.</FieldDescription>
       </Field>
-      <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
         <Button type="submit">Create job</Button>
         <FormFeedback state={state} />
       </div>
@@ -243,7 +243,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
   const [message, setMessage] = useState<string | null>(null);
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
       <Button
         variant="secondary"
         size="sm"
@@ -324,7 +324,7 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
       <Button variant="secondary" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/pause`)} disabled={status !== "running" && status !== "pending"}>
         Pause
       </Button>
@@ -354,11 +354,11 @@ export function AccountActionPanel({
   phoneNumber: string;
 }) {
   return (
-    <Card className="border-slate-200/80 bg-slate-50/80">
+    <Card className="surface-glass border-border/70 bg-white/60 shadow-[0_20px_48px_-32px_color-mix(in_oklab,var(--foreground)_16%,transparent)]">
       <CardHeader className="gap-3 border-b-0 pb-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="text-base">{accountLabel}</CardTitle>
+            <CardTitle className="text-base text-foreground">{accountLabel}</CardTitle>
             <CardDescription>{phoneNumber}</CardDescription>
           </div>
           <Badge variant={loginState === "ready" ? "green" : "amber"}>{loginState}</Badge>
