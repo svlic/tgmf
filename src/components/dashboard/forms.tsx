@@ -52,7 +52,7 @@ async function submitJson<TData = unknown>(url: string, body: unknown, method = 
   const result: JsonResult<TData> = await response.json();
 
   if ((response.status === 401 || response.status === 403) && !result.ok) {
-    window.location.href = "/login";
+    window.location.replace("/login");
   }
 
   return result;
@@ -90,15 +90,23 @@ export function LoginForm() {
         event.preventDefault();
         setLoading(true);
         setState({ error: null, success: null });
+        const attemptId = crypto.randomUUID();
         const formData = new FormData(event.currentTarget);
+        console.info("[admin-login-ui] submitting login request", {
+          attemptId,
+          path: window.location.pathname,
+          host: window.location.host,
+        });
         const result = await submitJson("/api/auth/login", {
           password: String(formData.get("password") || ""),
         });
         setLoading(false);
         if (!result.ok) {
+          console.warn("[admin-login-ui] login request rejected", { attemptId, error: result.error });
           setState({ error: result.error, success: null });
           return;
         }
+        console.info("[admin-login-ui] login accepted, redirecting", { attemptId, target: "/" });
         window.location.replace("/");
       }}
     >
