@@ -13,9 +13,11 @@ import { getAdminSession } from "@/lib/auth";
 export default async function LoginPage() {
   const session = await getAdminSession();
   if (session?.authenticated) {
+    console.info("[admin-login] login page redirect", { authenticated: true, target: "/" });
     redirect("/");
   }
 
+  console.info("[admin-login] login page rendered", { authenticated: false });
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-6 py-12">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_color-mix(in_oklab,var(--primary)_18%,transparent),_transparent_36%),radial-gradient(circle_at_bottom_right,_color-mix(in_oklab,var(--accent)_40%,transparent),_transparent_28%)]" />
