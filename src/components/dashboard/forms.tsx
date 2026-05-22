@@ -4,6 +4,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Field, FieldDescription, FieldLabel, FieldMessage } from "@/components/ui/field";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type FormState = {
   error: string | null;
@@ -23,13 +26,34 @@ async function submitJson(url: string, body: unknown, method = "POST") {
   return response.json();
 }
 
+function FormFeedback({ state }: { state: FormState }) {
+  if (!state.error && !state.success) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      {state.error ? <FieldMessage tone="error">{state.error}</FieldMessage> : null}
+      {state.success ? <FieldMessage tone="success">{state.success}</FieldMessage> : null}
+    </div>
+  );
+}
+
+function ActionFeedback({ message }: { message: string | null }) {
+  if (!message) {
+    return null;
+  }
+
+  return <FieldMessage className="basis-full">{message}</FieldMessage>;
+}
+
 export function LoginForm() {
   const [state, setState] = useState<FormState>({ error: null, success: null });
   const [loading, setLoading] = useState(false);
 
   return (
     <form
-      className="space-y-4"
+      className="space-y-5"
       onSubmit={async (event) => {
         event.preventDefault();
         setLoading(true);
@@ -46,9 +70,13 @@ export function LoginForm() {
         window.location.href = "/";
       }}
     >
-      <Input type="password" name="password" placeholder="Admin password" required />
-      {state.error ? <p className="text-sm text-red-600">{state.error}</p> : null}
-      <Button type="submit" disabled={loading} className="w-full">
+      <Field>
+        <FieldLabel htmlFor="password">Administrator password</FieldLabel>
+        <Input id="password" type="password" name="password" placeholder="Enter the server password" required />
+        <FieldDescription>The password is validated against the runtime server environment.</FieldDescription>
+      </Field>
+      <FormFeedback state={state} />
+      <Button type="submit" disabled={loading} size="lg" className="w-full">
         {loading ? "Signing in..." : "Sign in"}
       </Button>
     </form>
@@ -73,7 +101,7 @@ export function AccountCreateForm() {
   const [state, setState] = useState<FormState>({ error: null, success: null });
   return (
     <form
-      className="grid gap-3 md:grid-cols-2"
+      className="grid gap-5 md:grid-cols-2"
       onSubmit={async (event) => {
         event.preventDefault();
         setState({ error: null, success: null });
@@ -94,14 +122,27 @@ export function AccountCreateForm() {
         window.location.reload();
       }}
     >
-      <Input name="label" placeholder="Account label" required />
-      <Input name="phoneNumber" placeholder="Phone number" required />
-      <Input name="apiIdOverride" placeholder="API ID override (optional)" />
-      <Input name="apiHashOverride" placeholder="API hash override (optional)" />
-      <div className="md:col-span-2 flex items-center gap-3">
+      <Field>
+        <FieldLabel htmlFor="label">Account label</FieldLabel>
+        <Input id="label" name="label" placeholder="Primary migration account" required />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="phoneNumber">Phone number</FieldLabel>
+        <Input id="phoneNumber" name="phoneNumber" placeholder="+1 555 123 4567" required />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="apiIdOverride">API ID override</FieldLabel>
+        <Input id="apiIdOverride" name="apiIdOverride" placeholder="Optional project-specific API ID" />
+        <FieldDescription>Leave blank to use the shared environment default.</FieldDescription>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="apiHashOverride">API hash override</FieldLabel>
+        <Input id="apiHashOverride" name="apiHashOverride" placeholder="Optional API hash override" />
+        <FieldDescription>Useful when isolating one account from the default app credentials.</FieldDescription>
+      </Field>
+      <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button type="submit">Add account</Button>
-        {state.error ? <p className="text-sm text-red-600">{state.error}</p> : null}
-        {state.success ? <p className="text-sm text-emerald-600">{state.success}</p> : null}
+        <FormFeedback state={state} />
       </div>
     </form>
   );
@@ -111,7 +152,7 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
   const [state, setState] = useState<FormState>({ error: null, success: null });
   return (
     <form
-      className="grid gap-3 md:grid-cols-2"
+      className="grid gap-5 md:grid-cols-2"
       onSubmit={async (event) => {
         event.preventDefault();
         setState({ error: null, success: null });
@@ -137,35 +178,62 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
         window.location.reload();
       }}
     >
-      <Select name="accountId" required>
-        <option value="">Select account</option>
-        {accounts.map((account) => (
-          <option key={account.id} value={account.id}>
-            {account.label}
-          </option>
-        ))}
-      </Select>
-      <Input name="sourceChannelRef" placeholder="Source channel username / ID / invite ref" required />
-      <Input name="targetChannelRef" placeholder="Target channel username / ID / invite ref" required />
-      <Input name="startMessageId" type="number" min={1} placeholder="Start message ID" required />
-      <Input name="endMessageId" type="number" min={1} placeholder="End message ID" required />
-      <Select name="jobOrder" defaultValue="asc">
-        <option value="asc">Ascending</option>
-        <option value="desc">Descending</option>
-      </Select>
-      <Select name="mode" defaultValue="forward">
-        <option value="forward">Forward</option>
-        <option value="copy">Copy</option>
-      </Select>
-      <Select name="albumStrategy" defaultValue="full_group">
-        <option value="full_group">full_group</option>
-        <option value="captioned_only">captioned_only</option>
-      </Select>
-      <Input name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="Delay seconds" required />
-      <div className="md:col-span-2 flex items-center gap-3">
+      <Field>
+        <FieldLabel htmlFor="accountId">Account</FieldLabel>
+        <Select id="accountId" name="accountId" required>
+          <option value="">Select account</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="mode">Transfer mode</FieldLabel>
+        <Select id="mode" name="mode" defaultValue="forward">
+          <option value="forward">Forward</option>
+          <option value="copy">Copy</option>
+        </Select>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="sourceChannelRef">Source channel</FieldLabel>
+        <Input id="sourceChannelRef" name="sourceChannelRef" placeholder="username, peer ID, or invite ref" required />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="targetChannelRef">Target channel</FieldLabel>
+        <Input id="targetChannelRef" name="targetChannelRef" placeholder="username, peer ID, or invite ref" required />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>
+        <Input id="startMessageId" name="startMessageId" type="number" min={1} placeholder="1" required />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="endMessageId">End message ID</FieldLabel>
+        <Input id="endMessageId" name="endMessageId" type="number" min={1} placeholder="100" required />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="jobOrder">Message order</FieldLabel>
+        <Select id="jobOrder" name="jobOrder" defaultValue="asc">
+          <option value="asc">Ascending</option>
+          <option value="desc">Descending</option>
+        </Select>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="albumStrategy">Album strategy</FieldLabel>
+        <Select id="albumStrategy" name="albumStrategy" defaultValue="full_group">
+          <option value="full_group">full_group</option>
+          <option value="captioned_only">captioned_only</option>
+        </Select>
+      </Field>
+      <Field className="md:col-span-2">
+        <FieldLabel htmlFor="delaySeconds">Delay between messages</FieldLabel>
+        <Input id="delaySeconds" name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="2" required />
+        <FieldDescription>Throttle sends when the target channel is rate sensitive.</FieldDescription>
+      </Field>
+      <div className="md:col-span-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button type="submit">Create job</Button>
-        {state.error ? <p className="text-sm text-red-600">{state.error}</p> : null}
-        {state.success ? <p className="text-sm text-emerald-600">{state.success}</p> : null}
+        <FormFeedback state={state} />
       </div>
     </form>
   );
@@ -178,6 +246,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
     <div className="flex flex-wrap gap-2">
       <Button
         variant="secondary"
+        size="sm"
         onClick={async () => {
           const result = await submitJson(`/api/accounts/${accountId}/connectivity`, {});
           setMessage(result.ok ? "Connectivity checked" : result.error);
@@ -187,6 +256,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
       </Button>
       <Button
         variant="secondary"
+        size="sm"
         onClick={async () => {
           const result = await submitJson(`/api/accounts/${accountId}/start-login`, {});
           setMessage(result.ok ? `Code requested: ${result.data.phoneCodeHash}` : result.error);
@@ -196,6 +266,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
       </Button>
       <Button
         variant="secondary"
+        size="sm"
         onClick={async () => {
           const phoneCode = window.prompt("Enter Telegram verification code");
           const phoneCodeHash = window.prompt("Enter phoneCodeHash from start login result");
@@ -210,6 +281,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
       </Button>
       <Button
         variant="secondary"
+        size="sm"
         onClick={async () => {
           const password = window.prompt("Enter Telegram 2FA password");
           if (!password) {
@@ -222,7 +294,8 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
         Verify 2FA
       </Button>
       <Button
-        variant="secondary"
+        variant="ghost"
+        size="sm"
         onClick={async () => {
           const result = await fetch(`/api/accounts/${accountId}/dialogs`);
           const json = await result.json();
@@ -234,7 +307,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
       >
         Refresh dialogs
       </Button>
-      {message ? <p className="basis-full text-sm text-slate-600">{message}</p> : null}
+      <ActionFeedback message={message} />
     </div>
   );
 }
@@ -252,19 +325,48 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button variant="secondary" onClick={() => runAction(`/api/jobs/${jobId}/pause`)} disabled={status !== "running" && status !== "pending"}>
+      <Button variant="secondary" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/pause`)} disabled={status !== "running" && status !== "pending"}>
         Pause
       </Button>
-      <Button variant="secondary" onClick={() => runAction(`/api/jobs/${jobId}/resume`)} disabled={status !== "paused" && status !== "failed"}>
+      <Button variant="secondary" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/resume`)} disabled={status !== "paused" && status !== "failed"}>
         Resume
       </Button>
-      <Button variant="danger" onClick={() => runAction(`/api/jobs/${jobId}/cancel`)} disabled={status === "completed" || status === "cancelled"}>
+      <Button variant="danger" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/cancel`)} disabled={status === "completed" || status === "cancelled"}>
         Cancel
       </Button>
-      <Button variant="secondary" onClick={() => runAction(`/api/jobs/${jobId}/retry-failed`)}>
+      <Button variant="ghost" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/retry-failed`)}>
         Retry failed
       </Button>
-      {message ? <p className="basis-full text-sm text-slate-600">{message}</p> : null}
+      <ActionFeedback message={message} />
     </div>
+  );
+}
+
+export function AccountActionPanel({
+  accountId,
+  accountLabel,
+  loginState,
+  phoneNumber,
+}: {
+  accountId: string;
+  accountLabel: string;
+  loginState: string;
+  phoneNumber: string;
+}) {
+  return (
+    <Card className="border-slate-200/80 bg-slate-50/80">
+      <CardHeader className="gap-3 border-b-0 pb-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-base">{accountLabel}</CardTitle>
+            <CardDescription>{phoneNumber}</CardDescription>
+          </div>
+          <Badge variant={loginState === "ready" ? "green" : "amber"}>{loginState}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <AccountActionButtons accountId={accountId} />
+      </CardContent>
+    </Card>
   );
 }
