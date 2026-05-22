@@ -47,7 +47,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
         <CardHeader className="gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
@@ -57,58 +57,58 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               </div>
               <CardDescription>Inspect the selected transfer job, its source/target mapping, and recovery actions.</CardDescription>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Job ID</p>
-              <p className="mt-1 font-medium text-slate-900">{job.id}</p>
+            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 px-4 py-3 text-sm text-muted-foreground">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Job ID</p>
+              <p className="mt-1 font-medium text-foreground">{job.id}</p>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Source</p>
-              <p className="mt-2 font-medium text-slate-900">{job.source_channel_ref}</p>
+            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source</p>
+              <p className="mt-2 font-medium text-foreground">{job.source_channel_ref}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Target</p>
-              <p className="mt-2 font-medium text-slate-900">{job.target_channel_ref}</p>
+            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Target</p>
+              <p className="mt-2 font-medium text-foreground">{job.target_channel_ref}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Range</p>
-              <p className="mt-2 font-medium text-slate-900">{job.start_message_id} - {job.end_message_id}</p>
-              <p className="mt-1 text-sm text-slate-500">{job.job_order}</p>
+            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Range</p>
+              <p className="mt-2 font-medium text-foreground">{job.start_message_id} - {job.end_message_id}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{job.job_order}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Progress</p>
-              <p className="mt-2 font-medium text-slate-900">{job.processed_messages}/{job.total_messages}</p>
-              <p className="mt-1 text-sm text-slate-500">Mode: {job.mode} · Album: {job.album_strategy}</p>
+            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Progress</p>
+              <p className="mt-2 font-medium text-foreground">{job.processed_messages}/{job.total_messages}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Mode: {job.mode} · Album: {job.album_strategy}</p>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-900">Recovery and control actions</p>
-                <p className="text-sm text-slate-500">Pause, resume, cancel, or retry failed messages without leaving this page.</p>
+                <p className="text-sm font-medium text-foreground">Recovery and control actions</p>
+                <p className="text-sm leading-6 text-muted-foreground">Pause, resume, cancel, or retry failed messages without leaving this page.</p>
               </div>
               <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
             </div>
             <JobActionButtons jobId={job.id} status={job.status} />
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Account ID</p>
-                <p className="mt-2 font-medium text-slate-900">{job.account_id}</p>
+              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Account ID</p>
+                <p className="mt-2 font-medium text-foreground">{job.account_id}</p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Last error</p>
-                <p className="mt-2 text-sm text-slate-600">{job.last_error_message || "No error recorded."}</p>
+              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last error</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{job.last_error_message || "No error recorded."}</p>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
         <CardHeader>
           <CardDescription>Per-message execution log</CardDescription>
           <CardTitle>Message transfer records</CardTitle>
@@ -134,7 +134,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               <DataTableBody>
                 {records.map((record) => (
                   <DataTableRow key={record.id}>
-                    <DataTableCell className="font-medium text-slate-900">{record.source_message_id}</DataTableCell>
+                    <DataTableCell className="font-medium text-foreground">{record.source_message_id}</DataTableCell>
                     <DataTableCell>{record.target_message_id ?? "—"}</DataTableCell>
                     <DataTableCell>{record.media_group_id ?? "—"}</DataTableCell>
                     <DataTableCell>

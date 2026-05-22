@@ -36,7 +36,7 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
         <CardHeader>
           <CardDescription>Onboard Telegram identities</CardDescription>
           <CardTitle>Telegram accounts</CardTitle>
@@ -56,7 +56,7 @@ export default function AccountsPage() {
       {accounts.map((account) => {
         const dialogs = dialogRepository.listForAccount(account.id);
         return (
-          <Card key={account.id}>
+          <Card key={account.id} className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
             <CardHeader className="gap-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-2">
@@ -66,32 +66,32 @@ export default function AccountsPage() {
                   </div>
                   <CardDescription>{account.phone_number}</CardDescription>
                 </div>
-                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 sm:grid-cols-2 xl:min-w-[460px]">
+                <div className="surface-glass grid gap-3 rounded-(--radius-xl) border border-border/70 bg-white/55 p-4 text-sm text-muted-foreground sm:grid-cols-2 xl:min-w-[460px]">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">API ID</p>
-                    <p className="mt-1 font-medium text-slate-900">{account.api_id_override || "env default"}</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">API ID</p>
+                    <p className="mt-1 font-medium text-foreground">{account.api_id_override || "env default"}</p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">API hash</p>
-                    <p className="mt-1 font-medium text-slate-900">{account.api_hash_override_encrypted ? redactSecret("configured") : "env default"}</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">API hash</p>
+                    <p className="mt-1 font-medium text-foreground">{account.api_hash_override_encrypted ? redactSecret("configured") : "env default"}</p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Telegram user</p>
-                    <p className="mt-1 font-medium text-slate-900">{account.telegram_user_id || "—"}</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Telegram user</p>
+                    <p className="mt-1 font-medium text-foreground">{account.telegram_user_id || "—"}</p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Last connected</p>
-                    <p className="mt-1 font-medium text-slate-900">{account.last_connected_at || "never"}</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last connected</p>
+                    <p className="mt-1 font-medium text-foreground">{account.last_connected_at || "never"}</p>
                   </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">Account actions</p>
-                    <p className="text-sm text-slate-500">Drive the login flow and refresh cached dialogs for this account.</p>
+                    <p className="text-sm font-medium text-foreground">Account actions</p>
+                    <p className="text-sm leading-6 text-muted-foreground">Drive the login flow and refresh cached dialogs for this account.</p>
                   </div>
                 </div>
                 <AccountActionButtons accountId={account.id} />
@@ -100,8 +100,8 @@ export default function AccountsPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Cached dialogs</h3>
-                    <p className="mt-1 text-sm text-slate-500">Dialogs discovered from the most recent refresh for this account.</p>
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Cached dialogs</h3>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">Dialogs discovered from the most recent refresh for this account.</p>
                   </div>
                   <Badge variant="slate">{dialogs.length} cached</Badge>
                 </div>
@@ -123,9 +123,9 @@ export default function AccountsPage() {
                     <DataTableBody>
                       {dialogs.map((dialog) => (
                         <DataTableRow key={dialog.id}>
-                          <DataTableCell className="font-medium text-slate-900">{dialog.title}</DataTableCell>
+                          <DataTableCell className="font-medium text-foreground">{dialog.title}</DataTableCell>
                           <DataTableCell>
-                            <code className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">{dialog.peer_id}</code>
+                            <code className="rounded-md border border-border/70 bg-muted/70 px-2 py-1 text-xs text-foreground/80">{dialog.peer_id}</code>
                           </DataTableCell>
                           <DataTableCell>{dialog.entity_type}</DataTableCell>
                           <DataTableCell>

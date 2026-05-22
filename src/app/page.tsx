@@ -51,54 +51,54 @@ export default async function HomePage() {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="bg-slate-950 text-white shadow-lg shadow-slate-950/10">
+        <Card className="surface-hero relative overflow-hidden border-border/20 text-primary-foreground shadow-[0_28px_70px_-34px_color-mix(in_oklab,var(--foreground)_36%,transparent)]">
           <CardHeader className="border-b border-white/10">
-            <CardDescription className="text-slate-300">Worker health</CardDescription>
-            <CardTitle className="text-3xl text-white">{workerStatus}</CardTitle>
+            <CardDescription className="text-primary-foreground/72">Worker health</CardDescription>
+            <CardTitle className="text-3xl text-primary-foreground">{workerStatus}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-300">
-            <div className="flex items-center justify-between gap-3">
+          <CardContent className="space-y-3 text-sm text-primary-foreground/76">
+            <div className="flex items-center justify-between gap-3 rounded-[calc(var(--radius)-0.125rem)] border border-white/10 bg-white/6 px-3 py-2 backdrop-blur-sm">
               <span>Freshness</span>
               <Badge variant={workerFreshness === "healthy" ? "green" : "amber"}>{workerFreshness}</Badge>
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3 rounded-[calc(var(--radius)-0.125rem)] border border-white/10 bg-white/6 px-3 py-2 backdrop-blur-sm">
               <span>Current job</span>
-              <span className="font-medium text-white">{dashboard.latestWorker?.current_job_id ?? "—"}</span>
+              <span className="font-medium text-primary-foreground">{dashboard.latestWorker?.current_job_id ?? "—"}</span>
             </div>
-            <p className="text-xs text-slate-400">Last heartbeat: {dashboard.latestWorker?.heartbeat_at ?? "never"}</p>
+            <p className="text-xs text-primary-foreground/58">Last heartbeat: {dashboard.latestWorker?.heartbeat_at ?? "never"}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="surface-glass surface-panel border-border/70 shadow-[0_22px_54px_-34px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
           <CardHeader>
             <CardDescription>Accounts ready to run</CardDescription>
-            <CardTitle className="text-3xl">{readyAccounts}</CardTitle>
+            <CardTitle className="text-3xl text-foreground">{readyAccounts}</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-slate-500">
+          <CardContent className="text-sm leading-6 text-muted-foreground">
             {dashboard.accounts.length} total accounts configured for Telegram login and dialog refresh.
           </CardContent>
         </Card>
-        <Card>
+        <Card className="surface-glass surface-panel border-border/70 shadow-[0_22px_54px_-34px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
           <CardHeader>
             <CardDescription>Active jobs</CardDescription>
-            <CardTitle className="text-3xl">{activeJobs}</CardTitle>
+            <CardTitle className="text-3xl text-foreground">{activeJobs}</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-slate-500">
+          <CardContent className="text-sm leading-6 text-muted-foreground">
             Jobs currently pending, running, or claimed by the worker.
           </CardContent>
         </Card>
-        <Card>
+        <Card className="surface-glass surface-panel border-border/70 shadow-[0_22px_54px_-34px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
           <CardHeader>
             <CardDescription>Failed jobs</CardDescription>
-            <CardTitle className="text-3xl">{failedJobs}</CardTitle>
+            <CardTitle className="text-3xl text-foreground">{failedJobs}</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-slate-500">
+          <CardContent className="text-sm leading-6 text-muted-foreground">
             Retry or inspect failed work from the recent jobs table below.
           </CardContent>
         </Card>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
-        <Card>
+        <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
           <CardHeader>
             <CardDescription>Queue new work</CardDescription>
             <CardTitle>Create sync job</CardTitle>
@@ -107,7 +107,7 @@ export default async function HomePage() {
             <JobCreateForm accounts={dashboard.accounts.map((account) => ({ id: account.id, label: account.label }))} />
           </CardContent>
         </Card>
-        <Card>
+        <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
           <CardHeader>
             <CardDescription>Add operator credentials</CardDescription>
             <CardTitle>Create Telegram account</CardTitle>
@@ -119,14 +119,14 @@ export default async function HomePage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-        <Card>
+        <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
           <CardHeader className="gap-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <CardDescription>Operational timeline</CardDescription>
                 <CardTitle>Recent jobs</CardTitle>
               </div>
-              <p className="text-sm text-slate-500">Open a job to inspect detailed transfer records and error history.</p>
+              <p className="text-sm leading-6 text-muted-foreground">Open a job to inspect detailed transfer records and error history.</p>
             </div>
           </CardHeader>
           <CardContent>
@@ -151,16 +151,16 @@ export default async function HomePage() {
                   {dashboard.jobs.map((job) => (
                     <DataTableRow key={job.id}>
                       <DataTableCell>
-                        <Link href={`/jobs/${job.id}`} className="font-medium text-sky-700 hover:text-sky-800 hover:underline">
+                        <Link href={`/jobs/${job.id}`} className="font-medium text-primary transition hover:text-primary/80 hover:underline">
                           {job.id}
                         </Link>
-                        <div className="mt-1 text-xs text-slate-500">
+                        <div className="mt-1 text-xs text-muted-foreground">
                           {job.source_channel_ref} → {job.target_channel_ref}
                         </div>
                       </DataTableCell>
                       <DataTableCell>
                         {job.start_message_id} - {job.end_message_id}
-                        <div className="mt-1 text-xs text-slate-500">{job.job_order}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{job.job_order}</div>
                       </DataTableCell>
                       <DataTableCell>
                         <div className="flex flex-wrap gap-2">
@@ -172,8 +172,8 @@ export default async function HomePage() {
                         <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
                       </DataTableCell>
                       <DataTableCell>
-                        <span className="font-medium text-slate-900">{job.processed_messages}</span>
-                        <span className="text-slate-400"> / {job.total_messages}</span>
+                        <span className="font-medium text-foreground">{job.processed_messages}</span>
+                        <span className="text-muted-foreground"> / {job.total_messages}</span>
                       </DataTableCell>
                       <DataTableCell>
                         <JobActionButtons jobId={job.id} status={job.status} />
@@ -186,7 +186,7 @@ export default async function HomePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
           <CardHeader>
             <CardDescription>Fast account actions</CardDescription>
             <CardTitle>Operator quick actions</CardTitle>

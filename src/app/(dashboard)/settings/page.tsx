@@ -46,20 +46,25 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardDescription>Runtime-backed configuration</CardDescription>
-          <CardTitle>Environment settings</CardTitle>
+      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
+        <CardHeader className="gap-3">
+          <Badge variant="slate" className="w-fit">Runtime-backed configuration</Badge>
+          <div className="space-y-2">
+            <CardTitle>Environment settings</CardTitle>
+            <CardDescription>
+              Review the server-side configuration the dashboard depends on before onboarding accounts or launching jobs.
+            </CardDescription>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {settings.map((setting) => (
-            <div key={setting.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div key={setting.label} className="surface-glass surface-panel rounded-(--radius-xl) border border-border/70 p-5 shadow-[0_22px_46px_-30px_color-mix(in_oklab,var(--foreground)_16%,transparent)]">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-slate-900">{setting.label}</p>
+                <p className="text-sm font-medium text-foreground">{setting.label}</p>
                 <Badge variant={setting.configured ? "green" : "red"}>{setting.configured ? "configured" : "missing"}</Badge>
               </div>
-              <p className="mt-3 text-sm font-medium text-slate-700">{setting.value}</p>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{setting.description}</p>
+              <p className="mt-3 text-sm font-medium text-foreground/80">{setting.value}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{setting.description}</p>
             </div>
           ))}
         </CardContent>
