@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         userAgent: meta.userAgent,
         reason: "Invalid admin password",
       });
-      return fail("Invalid password", 401);
+      return fail("Wrong login password", 401);
     }
 
     await createAdminSession();

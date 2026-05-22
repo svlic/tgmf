@@ -103,9 +103,9 @@ export function LoginForm() {
       }}
     >
       <Field>
-        <FieldLabel htmlFor="password">Administrator password</FieldLabel>
-        <Input id="password" type="password" name="password" placeholder="Enter the server password" required />
-        <FieldDescription>The password is validated against the runtime server environment.</FieldDescription>
+        <FieldLabel htmlFor="password">Login password</FieldLabel>
+        <Input id="password" type="password" name="password" placeholder="Enter your login password" required />
+        <FieldDescription>This password is checked against ADMIN_PASSWORD in the server environment.</FieldDescription>
       </Field>
       <FormFeedback state={state} />
       <Button type="submit" disabled={loading} size="lg" className="w-full">

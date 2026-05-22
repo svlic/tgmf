@@ -27,7 +27,7 @@ export default async function LoginPage() {
             <div className="space-y-2">
               <CardTitle className="text-2xl text-balance text-foreground">Admin login</CardTitle>
               <CardDescription className="leading-6 text-muted-foreground">
-                Sign in with the administrator password from the server environment to manage Telegram accounts and sync jobs.
+                Sign in with the admin login password configured in the server environment to manage Telegram accounts and sync jobs.
               </CardDescription>
             </div>
           </CardHeader>

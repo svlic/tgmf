@@ -46,8 +46,8 @@ ADMIN_PASSWORD=
 说明：
 
 - `TELEGRAM_API_ID` 和 `TELEGRAM_API_HASH`：你的 Telegram API 配置
-- `APP_ENCRYPTION_KEY`：用于加密数据库中的敏感信息，建议使用强随机 32 字节密钥
-- `ADMIN_PASSWORD`：后台登录密码，生产环境建议使用 bcrypt 哈希
+- `APP_ENCRYPTION_KEY`：服务端加密/签名密钥，用于加密数据库中的敏感信息并签发管理会话；它不是登录密码，建议使用强随机且长度至少 32 个字符的密钥
+- `ADMIN_PASSWORD`：后台登录密码，按普通管理员登录密码使用即可；生产环境建议使用 bcrypt 哈希
 - `DATABASE_URL`：SQLite 文件路径，默认会落在挂载出来的 `data/` 目录里
 
 ### 2. 准备数据目录

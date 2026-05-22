@@ -7,7 +7,9 @@ const baseEnvSchema = z.object({
 });
 
 const secretEnvSchema = z.object({
-  APP_ENCRYPTION_KEY: z.string().min(32),
+  APP_ENCRYPTION_KEY: z
+    .string()
+    .min(32, "APP_ENCRYPTION_KEY must be at least 32 characters and should be a server-side random secret, not a login password."),
   ADMIN_PASSWORD: z.string().min(1),
 });
 
