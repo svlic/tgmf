@@ -12,17 +12,18 @@ const navigation = [
 
 export function DashboardLayoutShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-950">
-      <div className="absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-sky-100 via-white to-transparent" />
+    <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
+      <div className="grid-noise absolute inset-x-0 top-0 h-80" />
+      <div className="absolute inset-x-0 top-0 h-96 bg-[radial-gradient(circle_at_top,_color-mix(in_oklab,var(--primary)_18%,transparent),_transparent_48%),linear-gradient(180deg,_color-mix(in_oklab,white_68%,transparent),_transparent)]" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 sm:px-6 lg:px-8">
-        <header className="mb-6 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 shadow-sm shadow-slate-950/5 backdrop-blur">
-          <div className="flex flex-col gap-6 border-b border-slate-100 px-6 py-6 lg:flex-row lg:items-center lg:justify-between">
+        <header className="surface-glass surface-panel mb-6 overflow-hidden rounded-[calc(var(--radius-xl)+0.25rem)] border border-border/70 shadow-[0_24px_80px_-36px_color-mix(in_oklab,var(--foreground)_22%,transparent)]">
+          <div className="flex flex-col gap-6 border-b border-border/70 px-6 py-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-3">
               <Badge variant="blue" className="w-fit">Telegram migration console</Badge>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Admin workspace</p>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{APP_NAME}</h1>
-                <p className="max-w-2xl text-sm leading-6 text-slate-500">
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Admin workspace</p>
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{APP_NAME}</h1>
+                <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                   Operate account onboarding, worker health, and message transfer jobs from one focused dashboard.
                 </p>
               </div>
@@ -37,14 +38,14 @@ export function DashboardLayoutShell({ children }: { children: React.ReactNode }
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "group rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 transition hover:border-sky-200 hover:bg-sky-50/70 hover:shadow-sm",
+                  "group rounded-[var(--radius)] border border-border/70 bg-white/60 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:bg-white/85 hover:shadow-[0_18px_38px_-26px_color-mix(in_oklab,var(--primary)_45%,transparent)]",
                 )}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium text-slate-900 transition group-hover:text-sky-700">{item.label}</p>
-                  <span className="text-slate-300 transition group-hover:text-sky-400">→</span>
+                  <p className="font-medium text-foreground transition group-hover:text-primary">{item.label}</p>
+                  <span className="text-muted-foreground transition group-hover:text-primary">→</span>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{item.description}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
               </Link>
             ))}
           </div>
@@ -54,3 +55,4 @@ export function DashboardLayoutShell({ children }: { children: React.ReactNode }
     </div>
   );
 }
+

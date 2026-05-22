@@ -10,13 +10,13 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-6 py-10 text-center",
+        "rounded-(--radius-xl) border border-dashed border-border bg-secondary/45 px-6 py-10 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]",
         className,
       )}
     >
       <div className="mx-auto max-w-md space-y-2">
-        <p className="text-base font-semibold text-slate-900">{title}</p>
-        <p className="text-sm leading-6 text-slate-500">{description}</p>
+        <p className="text-base font-semibold text-foreground">{title}</p>
+        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
         {children ? <div className="pt-2">{children}</div> : null}
       </div>
     </div>
