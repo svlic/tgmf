@@ -6,19 +6,23 @@ const baseEnvSchema = z.object({
   TELEGRAM_API_HASH: z.string().optional().default(""),
 });
 
-const secretEnvSchema = z.object({
-  APP_ENCRYPTION_KEY: z
-    .string()
-    .min(32, "APP_ENCRYPTION_KEY must be at least 32 characters and should be a server-side random secret, not a login password."),
-  ADMIN_PASSWORD: z.string().min(1),
-});
+const appEncryptionKeySchema = z
+  .string()
+  .min(32, "APP_ENCRYPTION_KEY must be at least 32 characters and should be a server-side random secret, not a login password.");
+
+const adminPasswordSchema = z.string().min(1);
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
-export type SecretEnv = z.infer<typeof secretEnvSchema>;
+export type SecretEnv = {
+  APP_ENCRYPTION_KEY: string;
+  ADMIN_PASSWORD: string;
+};
 export type AppEnv = BaseEnv & SecretEnv;
 
 let cachedBaseEnv: BaseEnv | null = null;
 let cachedSecretEnv: SecretEnv | null = null;
+let cachedAppEncryptionKey: string | null = null;
+let cachedAdminPassword: string | null = null;
 
 export function getBaseEnv(): BaseEnv {
   if (!cachedBaseEnv) {
@@ -32,12 +36,28 @@ export function getBaseEnv(): BaseEnv {
   return cachedBaseEnv;
 }
 
+export function getAppEncryptionKey(): string {
+  if (!cachedAppEncryptionKey) {
+    cachedAppEncryptionKey = appEncryptionKeySchema.parse(process.env.APP_ENCRYPTION_KEY);
+  }
+
+  return cachedAppEncryptionKey;
+}
+
+export function getAdminPassword(): string {
+  if (!cachedAdminPassword) {
+    cachedAdminPassword = adminPasswordSchema.parse(process.env.ADMIN_PASSWORD);
+  }
+
+  return cachedAdminPassword;
+}
+
 export function getSecretEnv(): SecretEnv {
   if (!cachedSecretEnv) {
-    cachedSecretEnv = secretEnvSchema.parse({
-      APP_ENCRYPTION_KEY: process.env.APP_ENCRYPTION_KEY,
-      ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
-    });
+    cachedSecretEnv = {
+      APP_ENCRYPTION_KEY: getAppEncryptionKey(),
+      ADMIN_PASSWORD: getAdminPassword(),
+    };
   }
 
   return cachedSecretEnv;

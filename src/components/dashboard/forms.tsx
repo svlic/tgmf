@@ -37,12 +37,12 @@ async function submitJson<TData = unknown>(url: string, body: unknown, method = 
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
     if (response.redirected) {
-      window.location.href = response.url;
+      window.location.replace(response.url);
       return { ok: false, error: "Redirecting to login" };
     }
 
     if (response.status === 401 || response.status === 403) {
-      window.location.href = "/login";
+      window.location.replace("/login");
       return { ok: false, error: "Redirecting to login" };
     }
 
@@ -99,7 +99,7 @@ export function LoginForm() {
           setState({ error: result.error, success: null });
           return;
         }
-        window.location.href = "/";
+        window.location.replace("/");
       }}
     >
       <Field>
@@ -121,7 +121,7 @@ export function LogoutButton() {
       variant="secondary"
       onClick={async () => {
         await submitJson("/api/auth/logout", {});
-        window.location.href = "/login";
+        window.location.replace("/login");
       }}
     >
       Logout

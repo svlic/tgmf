@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
-import { getSecretEnv } from "@/lib/env";
+import { getAppEncryptionKey } from "@/lib/env";
 import type { AdminSessionPayload } from "@/lib/types";
 
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
@@ -8,7 +8,7 @@ const JWT_AUDIENCE = "tgmf-admin";
 const JWT_ISSUER = "tgmf";
 
 function getKeyMaterial() {
-  return createHash("sha256").update(getSecretEnv().APP_ENCRYPTION_KEY).digest();
+  return createHash("sha256").update(getAppEncryptionKey()).digest();
 }
 
 export function encryptString(plainText: string) {

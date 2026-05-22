@@ -2,11 +2,11 @@ import bcrypt from "bcryptjs";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AUTH_COOKIE_NAME, CSRF_HEADER_NAME } from "@/lib/constants";
-import { getSecretEnv } from "@/lib/env";
+import { getAdminPassword } from "@/lib/env";
 import { signAdminSession, verifyAdminSession } from "@/lib/crypto";
 
 export async function verifyAdminPassword(password: string) {
-  const { ADMIN_PASSWORD: configured } = getSecretEnv();
+  const configured = getAdminPassword();
 
   if (configured.startsWith("$2a$") || configured.startsWith("$2b$") || configured.startsWith("$2y$")) {
     return bcrypt.compare(password, configured);
