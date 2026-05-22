@@ -1,6 +1,7 @@
 import { requireAdminSession, assertCsrf } from "@/lib/auth";
 import { accountRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 import { completePasswordLogin } from "@/lib/telegram/service";
 import { verifyPasswordSchema } from "@/lib/validation/forms";
 
@@ -21,6 +22,7 @@ export async function POST(
     const result = await completePasswordLogin(accountId, payload.password);
     return ok(result);
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to verify password", 400);
   }
 }

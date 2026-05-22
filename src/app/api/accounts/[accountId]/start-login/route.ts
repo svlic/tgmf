@@ -1,6 +1,7 @@
 import { requireAdminSession, assertCsrf } from "@/lib/auth";
 import { accountRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 import { beginPhoneLogin } from "@/lib/telegram/service";
 import { startLoginSchema } from "@/lib/validation/forms";
 
@@ -21,6 +22,7 @@ export async function POST(
     const result = await beginPhoneLogin(accountId, payload.phoneNumber);
     return ok(result);
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to start login", 400);
   }
 }

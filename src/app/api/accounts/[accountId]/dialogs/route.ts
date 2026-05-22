@@ -1,6 +1,7 @@
 import { requireAdminSession, assertCsrf } from "@/lib/auth";
 import { accountRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 import { refreshDialogs } from "@/lib/telegram/service";
 
 export async function GET(
@@ -18,6 +19,7 @@ export async function GET(
     const dialogs = await refreshDialogs(accountId);
     return ok({ dialogs });
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to load dialogs", 400);
   }
 }
@@ -38,6 +40,7 @@ export async function POST(
     const dialogs = await refreshDialogs(accountId);
     return ok({ dialogs });
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to refresh dialogs", 400);
   }
 }

@@ -1,6 +1,7 @@
 import { requireAdminSession, assertCsrf } from "@/lib/auth";
 import { accountRepository, jobRepository, withRepositoryError } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 import { jobSchema } from "@/lib/validation/forms";
 
 export async function POST(request: Request) {
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
 
     return ok({ job });
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to create job", 400);
   }
 }

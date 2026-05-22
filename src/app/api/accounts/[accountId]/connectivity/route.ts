@@ -1,6 +1,7 @@
 import { requireAdminSession, assertCsrf } from "@/lib/auth";
 import { accountRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 import { testAccountConnectivity } from "@/lib/telegram/service";
 
 export async function POST(
@@ -19,6 +20,7 @@ export async function POST(
     const result = await testAccountConnectivity(accountId);
     return ok({ accountId, ...result });
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Connectivity test failed", 400);
   }
 }

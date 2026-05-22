@@ -1,6 +1,7 @@
 import { requireAdminSession, assertCsrf } from "@/lib/auth";
 import { accountRepository, withRepositoryError } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 import { accountSchema } from "@/lib/validation/forms";
 
 export async function POST(request: Request) {
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
 
     return ok({ account });
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to create account", 400);
   }
 }

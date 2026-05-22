@@ -1,6 +1,7 @@
 import { requireAdminSession, assertCsrf } from "@/lib/auth";
 import { jobRepository, withRepositoryError } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 
 export async function POST(
   _request: Request,
@@ -21,6 +22,7 @@ export async function POST(
     const updatedJob = withRepositoryError(() => jobRepository.requestCancel(jobId));
     return ok({ job: updatedJob });
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to cancel job", 400);
   }
 }

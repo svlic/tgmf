@@ -1,6 +1,7 @@
 import { requireAdminSession } from "@/lib/auth";
 import { workerRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
 import { WORKER_HEARTBEAT_STALE_MS } from "@/lib/constants";
 
 export async function GET() {
@@ -13,6 +14,7 @@ export async function GET() {
 
     return ok({ worker, isStale });
   } catch (error) {
+    rethrowNextError(error);
     return fail(error instanceof Error ? error.message : "Failed to load worker status", 400);
   }
 }
