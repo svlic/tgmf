@@ -15,6 +15,17 @@ function logAuthWarning(message: string, details?: Record<string, unknown>) {
   console.warn(AUTH_LOG_PREFIX, message, details ?? {});
 }
 
+async function isHttpsRequest() {
+  const requestHeaders = await headers();
+  const forwardedProto = requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (forwardedProto) {
+    return forwardedProto === "https";
+  }
+
+  const origin = requestHeaders.get("origin");
+  return origin ? new URL(origin).protocol === "https:" : false;
+}
+
 export async function verifyAdminPassword(password: string) {
   const configured = getAdminPassword();
 
@@ -28,7 +39,7 @@ export async function verifyAdminPassword(password: string) {
 export async function createAdminSession() {
   const token = await signAdminSession({ authenticated: true, issuedAt: Date.now() });
   const cookieStore = await cookies();
-  const secure = process.env.NODE_ENV === "production";
+  const secure = await isHttpsRequest();
 
   cookieStore.set(AUTH_COOKIE_NAME, token, {
     httpOnly: true,

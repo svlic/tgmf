@@ -23,6 +23,10 @@ type JsonResult<TData = unknown> =
       error: string;
     };
 
+function createClientAttemptId() {
+  return globalThis.crypto?.randomUUID?.() ?? `login-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 async function submitJson<TData = unknown>(url: string, body: unknown, method = "POST"): Promise<JsonResult<TData>> {
   const response = await fetch(url, {
     method,
@@ -90,24 +94,32 @@ export function LoginForm() {
         event.preventDefault();
         setLoading(true);
         setState({ error: null, success: null });
-        const attemptId = crypto.randomUUID();
+        const attemptId = createClientAttemptId();
         const formData = new FormData(event.currentTarget);
-        console.info("[admin-login-ui] submitting login request", {
-          attemptId,
-          path: window.location.pathname,
-          host: window.location.host,
-        });
-        const result = await submitJson("/api/auth/login", {
-          password: String(formData.get("password") || ""),
-        });
-        setLoading(false);
-        if (!result.ok) {
-          console.warn("[admin-login-ui] login request rejected", { attemptId, error: result.error });
-          setState({ error: result.error, success: null });
-          return;
+
+        try {
+          console.info("[admin-login-ui] submitting login request", {
+            attemptId,
+            path: window.location.pathname,
+            host: window.location.host,
+          });
+          const result = await submitJson("/api/auth/login", {
+            password: String(formData.get("password") || ""),
+          });
+          if (!result.ok) {
+            console.warn("[admin-login-ui] login request rejected", { attemptId, error: result.error });
+            setState({ error: result.error, success: null });
+            return;
+          }
+          console.info("[admin-login-ui] login accepted, redirecting", { attemptId, target: "/" });
+          window.location.replace("/");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Login failed";
+          console.error("[admin-login-ui] login request failed", { attemptId, message });
+          setState({ error: message, success: null });
+        } finally {
+          setLoading(false);
         }
-        console.info("[admin-login-ui] login accepted, redirecting", { attemptId, target: "/" });
-        window.location.replace("/");
       }}
     >
       <Field>
