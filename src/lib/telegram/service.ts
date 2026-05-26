@@ -2,10 +2,11 @@ import { Api } from "telegram/tl";
 import { createTelegramClient } from "@/lib/telegram/client";
 import { accountRepository, dialogRepository, transferRecordRepository, jobRepository } from "@/lib/db/repositories";
 import type { DialogCacheRow, SyncJobRow } from "@/lib/types";
+import { LOGIN_WINDOW_MINUTES } from "@/lib/constants";
 import { nowIso, safeErrorMessage, sleep } from "@/lib/utils";
 
 export type StartLoginResult = {
-  phoneCodeHash: string;
+  loginState: "awaiting_code";
 };
 
 type MessageLike = {
@@ -15,7 +16,25 @@ type MessageLike = {
   media?: unknown;
 };
 
-const loginSessions = new Map<string, { phoneCodeHash: string; startedAt: number }>();
+const loginSessions = new Map<
+  string,
+  { phoneNumber: string; phoneCodeHash: string; sessionString: string; startedAt: number }
+>();
+
+function getActiveLoginSession(accountId: string) {
+  const loginSession = loginSessions.get(accountId);
+  if (!loginSession) {
+    return null;
+  }
+
+  const expiresAt = loginSession.startedAt + LOGIN_WINDOW_MINUTES * 60_000;
+  if (Date.now() > expiresAt) {
+    loginSessions.delete(accountId);
+    return null;
+  }
+
+  return loginSession;
+}
 
 export async function testAccountConnectivity(accountId: string) {
   const { client } = await createTelegramClient(accountId);
@@ -35,39 +54,41 @@ export async function testAccountConnectivity(accountId: string) {
 }
 
 export async function beginPhoneLogin(accountId: string, phoneNumberOverride?: string) {
-  const { account, client } = await createTelegramClient(accountId);
+  const { account, client, session } = await createTelegramClient(accountId);
+  const phoneNumber = phoneNumberOverride || account.phone_number;
+
   try {
     await client.connect();
-    const result = await client.sendCode(
-      { apiId: client.apiId, apiHash: client.apiHash },
-      phoneNumberOverride || account.phone_number,
-    );
+    const result = await client.sendCode({ apiId: client.apiId, apiHash: client.apiHash }, phoneNumber);
 
     loginSessions.set(accountId, {
+      phoneNumber,
       phoneCodeHash: result.phoneCodeHash,
+      sessionString: session.save(),
       startedAt: Date.now(),
     });
     accountRepository.setLoginState(accountId, "awaiting_code", "Verification code requested");
-    return { phoneCodeHash: result.phoneCodeHash } satisfies StartLoginResult;
+    return { loginState: "awaiting_code" } satisfies StartLoginResult;
   } finally {
     await client.disconnect();
   }
 }
 
-export async function completePhoneCodeLogin(accountId: string, phoneCode: string, phoneCodeHash: string) {
-  const { account, client, session } = await createTelegramClient(accountId);
-  const loginState = loginSessions.get(accountId);
-  if (!loginState || loginState.phoneCodeHash !== phoneCodeHash) {
+export async function completePhoneCodeLogin(accountId: string, phoneCode: string) {
+  const loginState = getActiveLoginSession(accountId);
+  if (!loginState) {
     throw new Error("Login session expired. Please restart login.");
   }
+
+  const { client, session } = await createTelegramClient(accountId, loginState.sessionString);
 
   try {
     await client.connect();
     await client.invoke(
       new Api.auth.SignIn({
-        phoneNumber: account.phone_number,
+        phoneNumber: loginState.phoneNumber,
         phoneCode,
-        phoneCodeHash,
+        phoneCodeHash: loginState.phoneCodeHash,
       }),
     );
     const me = await client.getMe();
@@ -87,7 +108,12 @@ export async function completePhoneCodeLogin(accountId: string, phoneCode: strin
 }
 
 export async function completePasswordLogin(accountId: string, password: string) {
-  const { client, session } = await createTelegramClient(accountId);
+  const loginState = getActiveLoginSession(accountId);
+  if (!loginState) {
+    throw new Error("Login session expired. Please restart login.");
+  }
+
+  const { client, session } = await createTelegramClient(accountId, loginState.sessionString);
   try {
     await client.connect();
     const me = await client.signInWithPassword(
@@ -98,6 +124,7 @@ export async function completePasswordLogin(accountId: string, password: string)
       },
     );
     accountRepository.saveSession(accountId, session.save(), "ready", me?.id ? String(me.id) : null);
+    loginSessions.delete(accountId);
     return { loginState: "ready" as const };
   } finally {
     await client.disconnect();
