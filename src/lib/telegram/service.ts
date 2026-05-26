@@ -131,19 +131,58 @@ export async function completePasswordLogin(accountId: string, password: string)
   }
 }
 
+function getDialogUsername(entity: unknown) {
+  if (entity && typeof entity === "object" && "username" in entity) {
+    const username = entity.username;
+    return typeof username === "string" && username.length > 0 ? username : null;
+  }
+
+  return null;
+}
+
+function getDialogEntitySnapshot(entity: unknown) {
+  if (!entity || typeof entity !== "object") {
+    return null;
+  }
+
+  return {
+    id: "id" in entity ? String(entity.id) : null,
+    username: getDialogUsername(entity),
+    firstName: "firstName" in entity && typeof entity.firstName === "string" ? entity.firstName : null,
+    lastName: "lastName" in entity && typeof entity.lastName === "string" ? entity.lastName : null,
+    title: "title" in entity && typeof entity.title === "string" ? entity.title : null,
+    className: entity.constructor.name,
+  };
+}
+
+function buildDialogSnapshot(dialog: Awaited<ReturnType<Awaited<ReturnType<typeof createTelegramClient>>["client"]["getDialogs"]>>[number]) {
+  return {
+    id: String(dialog.id),
+    title: dialog.title || String(dialog.id),
+    isChannel: dialog.isChannel,
+    isGroup: dialog.isGroup,
+    isUser: dialog.isUser,
+    unreadCount: dialog.unreadCount,
+    entity: getDialogEntitySnapshot(dialog.entity),
+  };
+}
+
 export async function refreshDialogs(accountId: string) {
   const { client } = await createTelegramClient(accountId);
   try {
     await client.connect();
     const dialogs = await client.getDialogs({ limit: 100 });
-    const rows: Omit<DialogCacheRow, "id" | "account_id" | "fetched_at">[] = dialogs.map((dialog) => ({
-      peer_id: String(dialog.id),
-      title: dialog.title || String(dialog.id),
-      username: dialog.entity && "username" in dialog.entity ? String(dialog.entity.username ?? "") || null : null,
-      entity_type: dialog.isChannel ? "channel" : dialog.isGroup ? "group" : "user",
-      is_public: dialog.entity && "username" in dialog.entity && dialog.entity.username ? 1 : 0,
-      raw_json: JSON.stringify(dialog, (_, value) => (typeof value === "bigint" ? value.toString() : value)),
-    }));
+    const rows: Omit<DialogCacheRow, "id" | "account_id" | "fetched_at">[] = dialogs.map((dialog) => {
+      const username = getDialogUsername(dialog.entity);
+      return {
+        peer_id: String(dialog.id),
+        title: dialog.title || String(dialog.id),
+        username,
+        entity_type: dialog.isChannel ? "channel" : dialog.isGroup ? "group" : "user",
+        is_public: username ? 1 : 0,
+        raw_json: JSON.stringify(buildDialogSnapshot(dialog)),
+      };
+    });
     dialogRepository.replaceForAccount(accountId, rows);
     accountRepository.setLoginState(accountId, "ready", null);
     return dialogRepository.listForAccount(accountId);
