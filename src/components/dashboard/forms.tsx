@@ -293,71 +293,118 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
 
 export function AccountActionButtons({ accountId }: { accountId: string }) {
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   return (
     <div className="flex flex-wrap gap-2 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
       <Button
         variant="secondary"
         size="sm"
+        disabled={pendingAction !== null}
         onClick={async () => {
-          const result = await submitJson(`/api/accounts/${accountId}/connectivity`, {});
-          setMessage(result.ok ? "Connectivity checked" : result.error);
+          setPendingAction("connectivity");
+          setMessage("Checking connectivity...");
+          try {
+            const result = await submitJson(`/api/accounts/${accountId}/connectivity`, {});
+            setMessage(result.ok ? "Connectivity checked" : result.error);
+          } catch (error) {
+            setMessage(error instanceof Error ? error.message : "Connectivity check failed");
+          } finally {
+            setPendingAction(null);
+          }
         }}
       >
-        Test connection
+        {pendingAction === "connectivity" ? "Testing..." : "Test connection"}
       </Button>
       <Button
         variant="secondary"
         size="sm"
+        disabled={pendingAction !== null}
         onClick={async () => {
-          const result = await submitJson<{ phoneCodeHash: string }>(`/api/accounts/${accountId}/start-login`, {});
-          setMessage(result.ok ? `Code requested: ${result.data.phoneCodeHash}` : result.error);
+          setPendingAction("start-login");
+          setMessage("Requesting Telegram verification code...");
+          try {
+            const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/start-login`, {});
+            setMessage(result.ok ? "Verification code requested. Check Telegram, then click Verify code." : result.error);
+          } catch (error) {
+            setMessage(error instanceof Error ? error.message : "Failed to start login");
+          } finally {
+            setPendingAction(null);
+          }
         }}
       >
-        Start login
+        {pendingAction === "start-login" ? "Requesting code..." : "Start login"}
       </Button>
       <Button
         variant="secondary"
         size="sm"
+        disabled={pendingAction !== null}
         onClick={async () => {
           const phoneCode = window.prompt("Enter Telegram verification code");
-          const phoneCodeHash = window.prompt("Enter phoneCodeHash from start login result");
-          if (!phoneCode || !phoneCodeHash) {
+          if (!phoneCode) {
             return;
           }
-          const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode, phoneCodeHash });
-          setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
+
+          setPendingAction("verify-code");
+          setMessage("Verifying Telegram code...");
+          try {
+            const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode });
+            setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
+          } catch (error) {
+            setMessage(error instanceof Error ? error.message : "Failed to verify code");
+          } finally {
+            setPendingAction(null);
+          }
         }}
       >
-        Verify code
+        {pendingAction === "verify-code" ? "Verifying..." : "Verify code"}
       </Button>
       <Button
         variant="secondary"
         size="sm"
+        disabled={pendingAction !== null}
         onClick={async () => {
           const password = window.prompt("Enter Telegram 2FA password");
           if (!password) {
             return;
           }
-          const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-password`, { password });
-          setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
+
+          setPendingAction("verify-password");
+          setMessage("Verifying Telegram 2FA password...");
+          try {
+            const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-password`, { password });
+            setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
+          } catch (error) {
+            setMessage(error instanceof Error ? error.message : "Failed to verify 2FA password");
+          } finally {
+            setPendingAction(null);
+          }
         }}
       >
-        Verify 2FA
+        {pendingAction === "verify-password" ? "Verifying 2FA..." : "Verify 2FA"}
       </Button>
       <Button
         variant="ghost"
         size="sm"
+        disabled={pendingAction !== null}
         onClick={async () => {
-          const result = await fetch(`/api/accounts/${accountId}/dialogs`);
-          const json = await result.json();
-          setMessage(json.ok ? `Fetched ${json.data.length} dialogs` : json.error);
-          if (json.ok) {
-            window.location.reload();
+          setPendingAction("refresh-dialogs");
+          setMessage("Refreshing dialogs...");
+          try {
+            const result = await fetch(`/api/accounts/${accountId}/dialogs`);
+            const json = await result.json();
+            setMessage(json.ok ? `Fetched ${json.data.length} dialogs` : json.error);
+            if (json.ok) {
+              window.location.reload();
+            }
+          } catch (error) {
+            setMessage(error instanceof Error ? error.message : "Failed to refresh dialogs");
+          } finally {
+            setPendingAction(null);
           }
         }}
       >
-        Refresh dialogs
+        {pendingAction === "refresh-dialogs" ? "Refreshing..." : "Refresh dialogs"}
       </Button>
       <ActionFeedback message={message} />
     </div>

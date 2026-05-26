@@ -19,7 +19,7 @@ export async function POST(
     }
 
     const payload = verifyCodeSchema.parse(await request.json());
-    const result = await completePhoneCodeLogin(accountId, payload.phoneCode, payload.phoneCodeHash);
+    const result = await completePhoneCodeLogin(accountId, payload.phoneCode);
     return ok(result);
   } catch (error) {
     rethrowNextError(error);

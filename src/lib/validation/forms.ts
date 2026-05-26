@@ -18,7 +18,6 @@ export const startLoginSchema = z.object({
 
 export const verifyCodeSchema = z.object({
   phoneCode: z.string().min(1).max(16),
-  phoneCodeHash: z.string().min(1),
 });
 
 export const verifyPasswordSchema = z.object({
