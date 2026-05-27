@@ -9,6 +9,6 @@ export default async function HomePage() {
     redirect("/login");
   }
 
-  console.info("[admin-login] root redirect", { authenticated: true, target: "/accounts" });
-  redirect("/accounts");
+  console.info("[admin-login] root redirect", { authenticated: true, target: "/jobs/new" });
+  redirect("/jobs/new");
 }

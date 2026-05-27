@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { href: "/", label: "Overview", description: "Status, job creation, and recent activity" },
+  { href: "/jobs/new", label: "New job", description: "Create a message transfer task" },
   { href: "/accounts", label: "Accounts", description: "Manage Telegram identities and dialogs" },
   { href: "/settings", label: "Settings", description: "Review environment-backed configuration" },
 ];
