@@ -18,7 +18,9 @@ type MessageLike = {
   id?: number;
   groupedId?: bigint | string | null;
   message?: string;
-  media?: unknown;
+  media?: Api.TypeMessageMedia;
+  entities?: Api.TypeMessageEntity[];
+  noforwards?: boolean;
 };
 
 type ForwardResult = {
