@@ -363,6 +363,14 @@ export const transferRecordRepository = {
       .all(jobId) as MessageTransferRecordRow[];
   },
 
+  getByJobAndSourceMessageId(jobId: string, sourceMessageId: number) {
+    return (
+      (db()
+        .prepare(`SELECT * FROM message_transfer_records WHERE job_id = ? AND source_message_id = ?`)
+        .get(jobId, sourceMessageId) as MessageTransferRecordRow | undefined) ?? null
+    );
+  },
+
   upsert(input: {
     jobId: string;
     sourceMessageId: number;

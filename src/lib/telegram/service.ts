@@ -16,6 +16,11 @@ type MessageLike = {
   media?: unknown;
 };
 
+type ForwardResult = {
+  targetMessageIds: number[];
+  sourceMessages: MessageLike[];
+};
+
 const loginSessions = new Map<
   string,
   { phoneNumber: string; phoneCodeHash: string; sessionString: string; startedAt: number }
@@ -209,13 +214,66 @@ function selectCaptionedMessage(messages: MessageLike[]) {
   return messages.find((message) => typeof message.message === "string" && message.message.trim().length > 0) ?? null;
 }
 
-async function forwardMessage(client: Awaited<ReturnType<typeof createTelegramClient>>["client"], job: SyncJobRow, messageId: number) {
-  const result = await client.forwardMessages(job.target_channel_ref, {
-    fromPeer: job.source_channel_ref,
-    messages: [messageId],
+function getGroupedIdKey(message: MessageLike) {
+  return message.groupedId ? String(message.groupedId) : null;
+}
+
+function sortMessagesById(messages: MessageLike[]) {
+  return messages.sort((left, right) => (left.id ?? 0) - (right.id ?? 0));
+}
+
+function isMessageInJobRange(message: MessageLike, job: SyncJobRow) {
+  return typeof message.id === "number" && message.id >= job.start_message_id && message.id <= job.end_message_id;
+}
+
+async function fetchAlbumMessages(
+  client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
+  job: SyncJobRow,
+  sourceMessage: MessageLike,
+) {
+  const groupedId = getGroupedIdKey(sourceMessage);
+  if (!groupedId || !sourceMessage.id) {
+    return [sourceMessage];
+  }
+
+  const nearby = await client.getMessages(job.source_channel_ref, {
+    minId: Math.max(0, sourceMessage.id - 10),
+    maxId: sourceMessage.id + 10,
+    limit: 25,
   });
-  const first = Array.isArray(result) ? result[0] : result;
-  return first && typeof first.id === "number" ? first.id : null;
+  const messages = Array.from(nearby as Iterable<MessageLike>).filter(
+    (message) => getGroupedIdKey(message) === groupedId && isMessageInJobRange(message, job),
+  );
+
+  return messages.length > 0 ? sortMessagesById(messages) : [sourceMessage];
+}
+
+async function forwardMessages(
+  client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
+  job: SyncJobRow,
+  sourceMessages: MessageLike[],
+): Promise<ForwardResult> {
+  const sourceMessageIds = sourceMessages
+    .map((message) => message.id)
+    .filter((messageId): messageId is number => typeof messageId === "number");
+  if (sourceMessageIds.length === 0) {
+    throw new Error("Message missing id");
+  }
+
+  const sentMessages = await client.forwardMessages(job.target_channel_ref, {
+    fromPeer: job.source_channel_ref,
+    messages: sourceMessageIds,
+  });
+
+  const targetMessageIds = sentMessages.map((message) => message.id).filter((messageId): messageId is number => typeof messageId === "number");
+  if (targetMessageIds.length !== sourceMessageIds.length) {
+    throw new Error(`Forwarded message count mismatch: expected ${sourceMessageIds.length}, got ${targetMessageIds.length}`);
+  }
+
+  return {
+    targetMessageIds,
+    sourceMessages,
+  };
 }
 
 async function copyMessage(client: Awaited<ReturnType<typeof createTelegramClient>>["client"], job: SyncJobRow, message: MessageLike) {
@@ -260,6 +318,14 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
       onHeartbeat();
 
       try {
+        const alreadyTransferred = transferRecordRepository.getByJobAndSourceMessageId(job.id, messageId);
+        if (alreadyTransferred?.status === "sent") {
+          jobRepository.recordProgress(job.id, {
+            nextMessageId: messageIds[index + 1] ?? null,
+          });
+          continue;
+        }
+
         const fetched = await client.getMessages(job.source_channel_ref, { ids: [messageId] });
         const sourceMessage = Array.isArray(fetched) ? fetched[0] : fetched;
         if (!sourceMessage?.id) {
@@ -276,9 +342,10 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           continue;
         }
 
+        let messagesToForward = sourceMessage.groupedId ? await fetchAlbumMessages(client, job, sourceMessage as MessageLike) : [sourceMessage as MessageLike];
+
         if (job.album_strategy === "captioned_only" && sourceMessage.groupedId) {
-          const groupMessages = await client.getMessages(job.source_channel_ref, { ids: [messageId] });
-          const selected = selectCaptionedMessage((Array.isArray(groupMessages) ? groupMessages : [groupMessages]) as MessageLike[]);
+          const selected = selectCaptionedMessage(messagesToForward);
           if (!selected || selected.id !== sourceMessage.id) {
             transferRecordRepository.upsert({
               jobId: job.id,
@@ -293,26 +360,41 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             });
             continue;
           }
+          messagesToForward = [selected];
         }
 
-        let targetMessageId: number | null;
         if (job.mode === "forward") {
-          targetMessageId = await forwardMessage(client, job, sourceMessage.id);
+          const forwardResult = await forwardMessages(client, job, messagesToForward);
+          forwardResult.sourceMessages.forEach((message, messageIndex) => {
+            if (!message.id) {
+              return;
+            }
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId: message.id,
+              targetMessageId: forwardResult.targetMessageIds[messageIndex] ?? null,
+              mediaGroupId: getGroupedIdKey(message),
+              status: "sent",
+            });
+          });
+          jobRepository.recordProgress(job.id, {
+            nextMessageId: messageIds[index + 1] ?? null,
+            succeededIncrement: forwardResult.sourceMessages.length,
+          });
         } else {
-          targetMessageId = await copyMessage(client, job, sourceMessage as MessageLike);
+          const targetMessageId = await copyMessage(client, job, sourceMessage as MessageLike);
+          transferRecordRepository.upsert({
+            jobId: job.id,
+            sourceMessageId: sourceMessage.id,
+            targetMessageId,
+            mediaGroupId: sourceMessage.groupedId ? String(sourceMessage.groupedId) : null,
+            status: "sent",
+          });
+          jobRepository.recordProgress(job.id, {
+            nextMessageId: messageIds[index + 1] ?? null,
+            succeededIncrement: 1,
+          });
         }
-
-        transferRecordRepository.upsert({
-          jobId: job.id,
-          sourceMessageId: sourceMessage.id,
-          targetMessageId,
-          mediaGroupId: sourceMessage.groupedId ? String(sourceMessage.groupedId) : null,
-          status: "sent",
-        });
-        jobRepository.recordProgress(job.id, {
-          nextMessageId: messageIds[index + 1] ?? null,
-          succeededIncrement: 1,
-        });
       } catch (error) {
         const errorMessage = safeErrorMessage(error);
         transferRecordRepository.upsert({
