@@ -1,4 +1,5 @@
 import { Api } from "telegram/tl";
+import { CustomFile } from "telegram/client/uploads";
 import { createTelegramClient } from "@/lib/telegram/client";
 import {
   accountRepository,
@@ -26,6 +27,11 @@ type MessageLike = {
 type ForwardResult = {
   targetMessageIds: number[];
   sourceMessages: MessageLike[];
+};
+
+type DocumentLike = {
+  mimeType?: string;
+  attributes?: Api.TypeDocumentAttribute[];
 };
 
 function getActiveLoginSession(accountId: string) {
@@ -213,6 +219,60 @@ function sortMessagesById(messages: MessageLike[]) {
   return messages.sort((left, right) => (left.id ?? 0) - (right.id ?? 0));
 }
 
+function getDocumentFromMessage(message: MessageLike) {
+  return message.media instanceof Api.MessageMediaDocument && message.media.document instanceof Api.Document ? message.media.document : null;
+}
+
+function getDocumentFilename(document: DocumentLike | null) {
+  const filenameAttribute = document?.attributes?.find(
+    (attribute): attribute is Api.DocumentAttributeFilename => attribute instanceof Api.DocumentAttributeFilename,
+  );
+
+  return filenameAttribute?.fileName ?? null;
+}
+
+function getExtensionFromMimeType(mimeType: string | undefined) {
+  if (!mimeType) {
+    return null;
+  }
+
+  const [type, subtype] = mimeType.split("/");
+  if (!type || !subtype) {
+    return null;
+  }
+
+  if (type === "video") {
+    return subtype === "quicktime" ? "mov" : subtype;
+  }
+  if (type === "image") {
+    return subtype === "jpeg" ? "jpg" : subtype;
+  }
+  if (type === "audio") {
+    return subtype;
+  }
+  if (mimeType === "application/pdf") {
+    return "pdf";
+  }
+
+  return null;
+}
+
+function buildCopiedMediaFilename(message: MessageLike) {
+  const document = getDocumentFromMessage(message);
+  const existingName = getDocumentFilename(document);
+  if (existingName) {
+    return existingName;
+  }
+
+  const extension = getExtensionFromMimeType(document?.mimeType);
+  return extension ? `telegram-media-${message.id}.${extension}` : `telegram-media-${message.id}`;
+}
+
+function isVideoDocument(message: MessageLike) {
+  const document = getDocumentFromMessage(message);
+  return document?.mimeType?.startsWith("video/") ?? false;
+}
+
 function isMessageInJobRange(message: MessageLike, job: SyncJobRow) {
   return typeof message.id === "number" && message.id >= job.start_message_id && message.id <= job.end_message_id;
 }
@@ -276,16 +336,26 @@ async function copyMessage(client: Awaited<ReturnType<typeof createTelegramClien
   }
 
   const caption = message.message ?? "";
-  const result = message.media
-    ? await client.sendFile(job.target_channel_ref, {
-        file: message.media,
-        caption,
-        formattingEntities: message.entities,
-      })
-    : await client.sendMessage(job.target_channel_ref, {
-        message: caption,
-        formattingEntities: message.entities,
-      });
+  if (!message.media) {
+    const result = await client.sendMessage(job.target_channel_ref, {
+      message: caption,
+      formattingEntities: message.entities,
+    });
+    return result.id ?? null;
+  }
+
+  const downloaded = await client.downloadMedia(message.media, {});
+  if (!Buffer.isBuffer(downloaded) || downloaded.length === 0) {
+    throw new Error(`Failed to download media from message ${message.id}`);
+  }
+
+  const file = new CustomFile(buildCopiedMediaFilename(message), downloaded.length, "", downloaded);
+  const result = await client.sendFile(job.target_channel_ref, {
+    file,
+    caption,
+    formattingEntities: message.entities,
+    supportsStreaming: isVideoDocument(message),
+  });
 
   return result.id ?? null;
 }
