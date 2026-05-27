@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { JobActionButtons } from "@/components/dashboard/forms";
+import { JobProgressRefresh } from "@/components/dashboard/job-progress-refresh";
 import { jobRepository, transferRecordRepository } from "@/lib/db/repositories";
 import {
   DataTable,
@@ -45,9 +46,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
   const records = transferRecordRepository.listForJob(jobId);
   const progressPercent = job.total_messages > 0 ? Math.min(100, Math.round((job.processed_messages / job.total_messages) * 100)) : 0;
+  const shouldRefreshProgress = ["pending", "running"].includes(job.status);
 
   return (
     <div className="space-y-6">
+      <JobProgressRefresh active={shouldRefreshProgress} />
       <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
         <CardHeader className="gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
