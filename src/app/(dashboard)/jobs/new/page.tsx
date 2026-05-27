@@ -7,6 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { JobCreateForm } from "@/components/dashboard/forms";
 import { accountRepository } from "@/lib/db/repositories";
 
@@ -40,11 +41,21 @@ export default function NewJobPage() {
         </CardHeader>
         <CardContent className="space-y-5">
           {readyAccounts.length === 0 ? (
-            <div className="rounded-(--radius-xl) border border-amber-200/80 bg-amber-50/80 p-4 text-sm leading-6 text-amber-950">
-              No ready Telegram account is available yet. Add an account, complete the Telegram login flow, and refresh dialogs before creating a transfer job.
-            </div>
-          ) : null}
-          <JobCreateForm accounts={readyAccounts} />
+            <EmptyState
+              className="border-warning/45 bg-[color:color-mix(in_oklab,var(--warning)_14%,white)]"
+              title="Authenticate an account before creating a job"
+              description="A transfer job needs a ready Telegram account. Add an account, complete login, then refresh dialogs to unlock this form."
+            >
+              <Link
+                href="/accounts"
+                className="inline-flex h-10 items-center justify-center rounded-[calc(var(--radius)-0.125rem)] border border-primary/20 bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-[0_16px_36px_-18px_color-mix(in_oklab,var(--primary)_70%,transparent)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Manage accounts
+              </Link>
+            </EmptyState>
+          ) : (
+            <JobCreateForm accounts={readyAccounts} />
+          )}
         </CardContent>
       </Card>
     </div>

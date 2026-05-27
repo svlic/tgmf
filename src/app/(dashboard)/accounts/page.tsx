@@ -49,8 +49,10 @@ export default function AccountsPage() {
       {accounts.length === 0 ? (
         <EmptyState
           title="No Telegram accounts configured"
-          description="Create an account to start the Telegram login flow, test connectivity, and cache available dialogs."
-        />
+          description="Create an account above to start the Telegram login flow, test connectivity, and cache available dialogs."
+        >
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Start with the account form at the top of this page.</p>
+        </EmptyState>
       ) : null}
 
       {accounts.map((account) => {
@@ -109,7 +111,9 @@ export default function AccountsPage() {
                   <EmptyState
                     title="No dialogs cached yet"
                     description="Use Refresh dialogs after the account is authenticated to pull channel and chat metadata into the dashboard."
-                  />
+                  >
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Authenticate this account, then refresh dialogs from Account actions.</p>
+                  </EmptyState>
                 ) : (
                   <DataTable>
                     <DataTableHead>
@@ -123,11 +127,11 @@ export default function AccountsPage() {
                     <DataTableBody>
                       {dialogs.map((dialog) => (
                         <DataTableRow key={dialog.id}>
-                          <DataTableCell className="font-medium text-foreground">{dialog.title}</DataTableCell>
-                          <DataTableCell>
+                          <DataTableCell className="max-w-[18rem] truncate font-medium text-foreground" title={dialog.title}>{dialog.title}</DataTableCell>
+                          <DataTableCell className="whitespace-nowrap">
                             <code className="rounded-md border border-border/70 bg-muted/70 px-2 py-1 text-xs text-foreground/80">{dialog.peer_id}</code>
                           </DataTableCell>
-                          <DataTableCell>{dialog.entity_type}</DataTableCell>
+                          <DataTableCell className="whitespace-nowrap">{dialog.entity_type}</DataTableCell>
                           <DataTableCell>
                             <Badge variant={dialog.is_public ? "green" : "amber"}>{dialog.is_public ? "public" : "private"}</Badge>
                           </DataTableCell>

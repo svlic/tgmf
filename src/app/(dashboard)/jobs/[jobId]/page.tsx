@@ -44,6 +44,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
   }
 
   const records = transferRecordRepository.listForJob(jobId);
+  const progressPercent = job.total_messages > 0 ? Math.min(100, Math.round((job.processed_messages / job.total_messages) * 100)) : 0;
 
   return (
     <div className="space-y-6">
@@ -59,7 +60,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             </div>
             <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 px-4 py-3 text-sm text-muted-foreground">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Job ID</p>
-              <p className="mt-1 font-medium text-foreground">{job.id}</p>
+              <p className="mt-1 max-w-[18rem] truncate font-mono text-xs font-medium text-foreground" title={job.id}>{job.id}</p>
             </div>
           </div>
         </CardHeader>
@@ -67,11 +68,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source</p>
-              <p className="mt-2 font-medium text-foreground">{job.source_channel_ref}</p>
+              <p className="mt-2 break-all font-medium text-foreground">{job.source_channel_ref}</p>
             </div>
             <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Target</p>
-              <p className="mt-2 font-medium text-foreground">{job.target_channel_ref}</p>
+              <p className="mt-2 break-all font-medium text-foreground">{job.target_channel_ref}</p>
             </div>
             <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Range</p>
@@ -79,9 +80,18 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               <p className="mt-1 text-sm text-muted-foreground">{job.job_order}</p>
             </div>
             <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Progress</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Progress</p>
+                <span className="text-sm font-semibold text-primary">{progressPercent}%</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full border border-primary/10 bg-secondary/80">
+                <div
+                  className="h-full rounded-full bg-primary shadow-[0_8px_18px_-10px_color-mix(in_oklab,var(--primary)_80%,transparent)] transition-[width] duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
               <p className="mt-2 font-medium text-foreground">{job.processed_messages}/{job.total_messages}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Mode: {job.mode} · Album: {job.album_strategy}</p>
+              <p className="mt-1 break-words text-sm text-muted-foreground">Mode: {job.mode} · Album: {job.album_strategy}</p>
             </div>
           </div>
 
@@ -97,11 +107,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Account ID</p>
-                <p className="mt-2 font-medium text-foreground">{job.account_id}</p>
+                <p className="mt-2 truncate font-mono text-xs font-medium text-foreground" title={job.account_id}>{job.account_id}</p>
               </div>
               <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last error</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{job.last_error_message || "No error recorded."}</p>
+                <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">{job.last_error_message || "No error recorded."}</p>
               </div>
             </div>
           </div>
@@ -118,7 +128,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             <EmptyState
               title="No message records yet"
               description="Once the worker begins processing this job, every transfer attempt will appear here with status and error details."
-            />
+            >
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Use the controls above to resume or retry work if the job is paused.</p>
+            </EmptyState>
           ) : (
             <DataTable>
               <DataTableHead>
@@ -134,14 +146,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               <DataTableBody>
                 {records.map((record) => (
                   <DataTableRow key={record.id}>
-                    <DataTableCell className="font-medium text-foreground">{record.source_message_id}</DataTableCell>
-                    <DataTableCell>{record.target_message_id ?? "—"}</DataTableCell>
-                    <DataTableCell>{record.media_group_id ?? "—"}</DataTableCell>
+                    <DataTableCell className="whitespace-nowrap font-medium text-foreground">{record.source_message_id}</DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">{record.target_message_id ?? "—"}</DataTableCell>
+                    <DataTableCell className="max-w-[12rem] break-all font-mono text-xs">{record.media_group_id ?? "—"}</DataTableCell>
                     <DataTableCell>
                       <Badge variant={statusVariant(record.status)}>{record.status}</Badge>
                     </DataTableCell>
-                    <DataTableCell>{record.error_reason ?? "—"}</DataTableCell>
-                    <DataTableCell>{record.processed_at ?? "—"}</DataTableCell>
+                    <DataTableCell className="max-w-[22rem] break-words">{record.error_reason ?? "—"}</DataTableCell>
+                    <DataTableCell className="whitespace-nowrap font-mono text-xs">{record.processed_at ?? "—"}</DataTableCell>
                   </DataTableRow>
                 ))}
               </DataTableBody>
