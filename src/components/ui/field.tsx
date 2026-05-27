@@ -13,16 +13,26 @@ export function FieldDescription({ className, ...props }: React.HTMLAttributes<H
   return <p className={cn("text-xs leading-5 text-muted-foreground", className)} {...props} />;
 }
 
-export function FieldMessage({ className, tone = "default", ...props }: React.HTMLAttributes<HTMLParagraphElement> & { tone?: "default" | "error" | "success" }) {
+export function FieldMessage({
+  className,
+  tone = "default",
+  role,
+  "aria-live": ariaLive,
+  ...props
+}: React.HTMLAttributes<HTMLParagraphElement> & { tone?: "default" | "error" | "success" }) {
+  const liveRegion = ariaLive ?? (tone === "error" ? "assertive" : tone === "success" ? "polite" : undefined);
+
   return (
     <p
       className={cn(
-        "text-sm leading-6",
-        tone === "default" && "text-muted-foreground",
-        tone === "error" && "text-destructive",
-        tone === "success" && "text-[color:var(--success)]",
+        "rounded-[calc(var(--radius)-0.25rem)] border px-3 py-2 text-sm leading-6 shadow-sm shadow-black/5",
+        tone === "default" && "border-border/70 bg-muted/45 text-muted-foreground",
+        tone === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
+        tone === "success" && "border-[color:color-mix(in_oklab,var(--success)_30%,transparent)] bg-[color:color-mix(in_oklab,var(--success)_12%,transparent)] text-success-foreground",
         className,
       )}
+      role={role ?? (tone === "error" ? "alert" : undefined)}
+      aria-live={liveRegion}
       {...props}
     />
   );

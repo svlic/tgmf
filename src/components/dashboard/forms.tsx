@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -13,6 +14,8 @@ type FormState = {
   error: string | null;
   success: string | null;
 };
+
+type FeedbackTone = "default" | "error" | "success";
 
 type JsonResult<TData = unknown> =
   | {
@@ -76,12 +79,16 @@ function FormFeedback({ state }: { state: FormState }) {
   );
 }
 
-function ActionFeedback({ message }: { message: string | null }) {
-  if (!message) {
+function ActionFeedback({ feedback }: { feedback: { message: string; tone: FeedbackTone } | null }) {
+  if (!feedback) {
     return null;
   }
 
-  return <FieldMessage className="basis-full">{message}</FieldMessage>;
+  return (
+    <FieldMessage tone={feedback.tone} className="basis-full">
+      {feedback.message}
+    </FieldMessage>
+  );
 }
 
 export function LoginForm() {
@@ -151,6 +158,7 @@ export function LogoutButton() {
 }
 
 export function AccountCreateForm() {
+  const router = useRouter();
   const [state, setState] = useState<FormState>({ error: null, success: null });
   return (
     <form
@@ -172,7 +180,7 @@ export function AccountCreateForm() {
         }
         setState({ error: null, success: "Account created" });
         event.currentTarget.reset();
-        window.location.reload();
+        router.refresh();
       }}
     >
       <Field>
@@ -203,12 +211,19 @@ export function AccountCreateForm() {
 
 export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; label: string }> }) {
   const [state, setState] = useState<FormState>({ error: null, success: null });
+  const hasAccounts = accounts.length > 0;
+
   return (
     <form
       className="grid gap-5 md:grid-cols-2"
       onSubmit={async (event) => {
         event.preventDefault();
         setState({ error: null, success: null });
+
+        if (!hasAccounts) {
+          setState({ error: "Add and authenticate a Telegram account before creating a job.", success: null });
+          return;
+        }
         const formData = new FormData(event.currentTarget);
         const payload = {
           accountId: String(formData.get("accountId") || ""),
@@ -236,213 +251,311 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
         window.location.replace(`/jobs/${result.data.job.id}`);
       }}
     >
-      <Field>
-        <FieldLabel htmlFor="accountId">Account</FieldLabel>
-        <Select id="accountId" name="accountId" required>
-          <option value="">Select account</option>
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="mode">Transfer mode</FieldLabel>
-        <Select id="mode" name="mode" defaultValue="forward">
-          <option value="forward">Forward</option>
-          <option value="copy">Copy</option>
-        </Select>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="sourceChannelRef">Source channel</FieldLabel>
-        <Input id="sourceChannelRef" name="sourceChannelRef" placeholder="username, peer ID, or invite ref" required />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="targetChannelRef">Target channel</FieldLabel>
-        <Input id="targetChannelRef" name="targetChannelRef" placeholder="username, peer ID, or invite ref" required />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>
-        <Input id="startMessageId" name="startMessageId" type="number" min={1} placeholder="1" required />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="endMessageId">End message ID</FieldLabel>
-        <Input id="endMessageId" name="endMessageId" type="number" min={1} placeholder="100" required />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="jobOrder">Message order</FieldLabel>
-        <Select id="jobOrder" name="jobOrder" defaultValue="asc">
-          <option value="asc">Ascending</option>
-          <option value="desc">Descending</option>
-        </Select>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="albumStrategy">Album strategy</FieldLabel>
-        <Select id="albumStrategy" name="albumStrategy" defaultValue="full_group">
-          <option value="full_group">full_group</option>
-          <option value="captioned_only">captioned_only</option>
-        </Select>
-      </Field>
-      <Field className="md:col-span-2">
-        <FieldLabel htmlFor="delaySeconds">Delay between messages</FieldLabel>
-        <Input id="delaySeconds" name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="2" required />
-        <FieldDescription>Throttle sends when the target channel is rate sensitive.</FieldDescription>
-      </Field>
-      <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <Button type="submit">Create job</Button>
-        <FormFeedback state={state} />
-      </div>
+      <fieldset className="contents" disabled={!hasAccounts} aria-disabled={!hasAccounts}>
+        <Field>
+          <FieldLabel htmlFor="accountId">Account</FieldLabel>
+          <Select id="accountId" name="accountId" required>
+            <option value="">Select account</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="mode">Transfer mode</FieldLabel>
+          <Select id="mode" name="mode" defaultValue="forward">
+            <option value="forward">Forward</option>
+            <option value="copy">Copy</option>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="sourceChannelRef">Source channel</FieldLabel>
+          <Input id="sourceChannelRef" name="sourceChannelRef" placeholder="username, peer ID, or invite ref" required />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="targetChannelRef">Target channel</FieldLabel>
+          <Input id="targetChannelRef" name="targetChannelRef" placeholder="username, peer ID, or invite ref" required />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>
+          <Input id="startMessageId" name="startMessageId" type="number" min={1} placeholder="1" required />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="endMessageId">End message ID</FieldLabel>
+          <Input id="endMessageId" name="endMessageId" type="number" min={1} placeholder="100" required />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="jobOrder">Message order</FieldLabel>
+          <Select id="jobOrder" name="jobOrder" defaultValue="asc">
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="albumStrategy">Album strategy</FieldLabel>
+          <Select id="albumStrategy" name="albumStrategy" defaultValue="full_group">
+            <option value="full_group">full_group</option>
+            <option value="captioned_only">captioned_only</option>
+          </Select>
+        </Field>
+        <Field className="md:col-span-2">
+          <FieldLabel htmlFor="delaySeconds">Delay between messages</FieldLabel>
+          <Input id="delaySeconds" name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="2" required />
+          <FieldDescription>Throttle sends when the target channel is rate sensitive.</FieldDescription>
+        </Field>
+        <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <Button type="submit" disabled={!hasAccounts}>Create job</Button>
+          <FormFeedback state={state} />
+        </div>
+      </fieldset>
     </form>
   );
 }
 
 export function AccountActionButtons({ accountId }: { accountId: string }) {
-  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+  const phoneCodeId = useId();
+  const passwordId = useId();
+  const [feedback, setFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [phoneCode, setPhoneCode] = useState("");
+  const [password, setPassword] = useState("");
+  const disabled = pendingAction !== null;
+
+  async function runAccountAction<TData>(action: string, loadingMessage: string, request: () => Promise<JsonResult<TData>>, onSuccess: (data: TData) => string) {
+    setPendingAction(action);
+    setFeedback({ message: loadingMessage, tone: "default" });
+    try {
+      const result = await request();
+      if (!result.ok) {
+        setFeedback({ message: result.error, tone: "error" });
+        return false;
+      }
+
+      setFeedback({ message: onSuccess(result.data), tone: "success" });
+      return true;
+    } catch (error) {
+      setFeedback({ message: error instanceof Error ? error.message : "Account action failed", tone: "error" });
+      return false;
+    } finally {
+      setPendingAction(null);
+    }
+  }
 
   return (
-    <div className="flex flex-wrap gap-2 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={pendingAction !== null}
-        onClick={async () => {
-          setPendingAction("connectivity");
-          setMessage("Checking connectivity...");
-          try {
-            const result = await submitJson(`/api/accounts/${accountId}/connectivity`, {});
-            setMessage(result.ok ? "Connectivity checked" : result.error);
-          } catch (error) {
-            setMessage(error instanceof Error ? error.message : "Connectivity check failed");
-          } finally {
-            setPendingAction(null);
-          }
-        }}
-      >
-        {pendingAction === "connectivity" ? "Testing..." : "Test connection"}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={pendingAction !== null}
-        onClick={async () => {
-          setPendingAction("start-login");
-          setMessage("Requesting Telegram verification code...");
-          try {
-            const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/start-login`, {});
-            setMessage(result.ok ? "Verification code requested. Check Telegram, then click Verify code." : result.error);
-          } catch (error) {
-            setMessage(error instanceof Error ? error.message : "Failed to start login");
-          } finally {
-            setPendingAction(null);
-          }
-        }}
-      >
-        {pendingAction === "start-login" ? "Requesting code..." : "Start login"}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={pendingAction !== null}
-        onClick={async () => {
-          const phoneCode = window.prompt("Enter Telegram verification code");
-          if (!phoneCode) {
-            return;
-          }
+    <div className="grid gap-3 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          onClick={() => {
+            void runAccountAction(
+              "connectivity",
+              "Checking connectivity...",
+              () => submitJson(`/api/accounts/${accountId}/connectivity`, {}),
+              () => "Connectivity checked",
+            );
+          }}
+        >
+          {pendingAction === "connectivity" ? "Testing..." : "Test connection"}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          onClick={() => {
+            void runAccountAction(
+              "start-login",
+              "Requesting Telegram verification code...",
+              () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/start-login`, {}),
+              () => "Verification code requested. Enter the code from Telegram below.",
+            );
+          }}
+        >
+          {pendingAction === "start-login" ? "Requesting code..." : "Start login"}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={async () => {
+            const refreshed = await runAccountAction(
+              "refresh-dialogs",
+              "Refreshing dialogs...",
+              () => submitJson<{ dialogs: unknown[] }>(`/api/accounts/${accountId}/dialogs`, {}),
+              (data) => `Fetched ${data.dialogs.length} dialogs`,
+            );
 
-          setPendingAction("verify-code");
-          setMessage("Verifying Telegram code...");
-          try {
-            const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode });
-            setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
-          } catch (error) {
-            setMessage(error instanceof Error ? error.message : "Failed to verify code");
-          } finally {
-            setPendingAction(null);
-          }
-        }}
-      >
-        {pendingAction === "verify-code" ? "Verifying..." : "Verify code"}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={pendingAction !== null}
-        onClick={async () => {
-          const password = window.prompt("Enter Telegram 2FA password");
-          if (!password) {
-            return;
-          }
-
-          setPendingAction("verify-password");
-          setMessage("Verifying Telegram 2FA password...");
-          try {
-            const result = await submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-password`, { password });
-            setMessage(result.ok ? `Login state: ${result.data.loginState}` : result.error);
-          } catch (error) {
-            setMessage(error instanceof Error ? error.message : "Failed to verify 2FA password");
-          } finally {
-            setPendingAction(null);
-          }
-        }}
-      >
-        {pendingAction === "verify-password" ? "Verifying 2FA..." : "Verify 2FA"}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={pendingAction !== null}
-        onClick={async () => {
-          setPendingAction("refresh-dialogs");
-          setMessage("Refreshing dialogs...");
-          try {
-            const result = await fetch(`/api/accounts/${accountId}/dialogs`);
-            const json = await result.json();
-            setMessage(json.ok ? `Fetched ${json.data.length} dialogs` : json.error);
-            if (json.ok) {
-              window.location.reload();
+            if (refreshed) {
+              router.refresh();
             }
-          } catch (error) {
-            setMessage(error instanceof Error ? error.message : "Failed to refresh dialogs");
-          } finally {
-            setPendingAction(null);
-          }
-        }}
-      >
-        {pendingAction === "refresh-dialogs" ? "Refreshing..." : "Refresh dialogs"}
-      </Button>
-      <ActionFeedback message={message} />
+          }}
+        >
+          {pendingAction === "refresh-dialogs" ? "Refreshing..." : "Refresh dialogs"}
+        </Button>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <form
+          className="rounded-[var(--radius)] border border-border/70 bg-white/55 p-3 shadow-sm shadow-black/5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const trimmedCode = phoneCode.trim();
+            if (!trimmedCode) {
+              setFeedback({ message: "Enter the Telegram verification code first.", tone: "error" });
+              return;
+            }
+
+            void runAccountAction(
+              "verify-code",
+              "Verifying Telegram code...",
+              () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode: trimmedCode }),
+              (data) => {
+                setPhoneCode("");
+                router.refresh();
+                return `Login state: ${data.loginState}`;
+              },
+            );
+          }}
+        >
+          <Field>
+            <FieldLabel htmlFor={phoneCodeId}>Verification code</FieldLabel>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id={phoneCodeId}
+                value={phoneCode}
+                onChange={(event) => setPhoneCode(event.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="Code from Telegram"
+                disabled={disabled}
+              />
+              <Button type="submit" size="sm" variant="secondary" disabled={disabled} className="h-11 shrink-0">
+                {pendingAction === "verify-code" ? "Verifying..." : "Verify code"}
+              </Button>
+            </div>
+            <FieldDescription>Use this after Start login sends a Telegram code.</FieldDescription>
+          </Field>
+        </form>
+
+        <form
+          className="rounded-[var(--radius)] border border-border/70 bg-white/55 p-3 shadow-sm shadow-black/5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!password) {
+              setFeedback({ message: "Enter the Telegram 2FA password first.", tone: "error" });
+              return;
+            }
+
+            void runAccountAction(
+              "verify-password",
+              "Verifying Telegram 2FA password...",
+              () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-password`, { password }),
+              (data) => {
+                setPassword("");
+                router.refresh();
+                return `Login state: ${data.loginState}`;
+              },
+            );
+          }}
+        >
+          <Field>
+            <FieldLabel htmlFor={passwordId}>Two-factor password</FieldLabel>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id={passwordId}
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                placeholder="Telegram 2FA password"
+                disabled={disabled}
+              />
+              <Button type="submit" size="sm" variant="secondary" disabled={disabled} className="h-11 shrink-0">
+                {pendingAction === "verify-password" ? "Verifying 2FA..." : "Verify 2FA"}
+              </Button>
+            </div>
+            <FieldDescription>Only needed when Telegram requests cloud password verification.</FieldDescription>
+          </Field>
+        </form>
+      </div>
+
+      <ActionFeedback feedback={feedback} />
     </div>
   );
 }
 
 export function JobActionButtons({ jobId, status }: { jobId: string; status: string }) {
-  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+  const [feedback, setFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const disabled = pendingAction !== null;
 
-  async function runAction(path: string) {
-    const result = await submitJson(path, {});
-    setMessage(result.ok ? "Updated" : result.error);
-    if (result.ok) {
-      window.location.reload();
+  async function runAction(action: string, path: string, loadingMessage: string, successMessage: string) {
+    setPendingAction(action);
+    setFeedback({ message: loadingMessage, tone: "default" });
+    try {
+      const result = await submitJson(path, {});
+      if (!result.ok) {
+        setFeedback({ message: result.error, tone: "error" });
+        return;
+      }
+
+      setFeedback({ message: successMessage, tone: "success" });
+      router.refresh();
+    } catch (error) {
+      setFeedback({ message: error instanceof Error ? error.message : "Job action failed", tone: "error" });
+    } finally {
+      setPendingAction(null);
     }
   }
 
   return (
     <div className="flex flex-wrap gap-2 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
-      <Button variant="secondary" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/pause`)} disabled={status !== "running" && status !== "pending"}>
-        Pause
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          void runAction("pause", `/api/jobs/${jobId}/pause`, "Pausing job...", "Job paused");
+        }}
+        disabled={disabled || (status !== "running" && status !== "pending")}
+      >
+        {pendingAction === "pause" ? "Pausing..." : "Pause"}
       </Button>
-      <Button variant="secondary" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/resume`)} disabled={status !== "paused" && status !== "failed"}>
-        Resume
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          void runAction("resume", `/api/jobs/${jobId}/resume`, "Resuming job...", "Job resumed");
+        }}
+        disabled={disabled || (status !== "paused" && status !== "failed")}
+      >
+        {pendingAction === "resume" ? "Resuming..." : "Resume"}
       </Button>
-      <Button variant="danger" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/cancel`)} disabled={status === "completed" || status === "cancelled"}>
-        Cancel
+      <Button
+        variant="danger"
+        size="sm"
+        onClick={() => {
+          void runAction("cancel", `/api/jobs/${jobId}/cancel`, "Cancelling job...", "Job cancelled");
+        }}
+        disabled={disabled || status === "completed" || status === "cancelled"}
+      >
+        {pendingAction === "cancel" ? "Cancelling..." : "Cancel"}
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => runAction(`/api/jobs/${jobId}/retry-failed`)}>
-        Retry failed
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          void runAction("retry-failed", `/api/jobs/${jobId}/retry-failed`, "Queueing failed records...", "Failed records queued for retry");
+        }}
+        disabled={disabled}
+      >
+        {pendingAction === "retry-failed" ? "Queueing retry..." : "Retry failed"}
       </Button>
-      <ActionFeedback message={message} />
+      <ActionFeedback feedback={feedback} />
     </div>
   );
 }
