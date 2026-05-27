@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "@/components/ui/field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { SyncJobRow } from "@/lib/types";
 
 type FormState = {
   error: string | null;
@@ -220,14 +221,19 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
           albumStrategy: String(formData.get("albumStrategy") || "full_group"),
           delaySeconds: Number(formData.get("delaySeconds") || 2),
         };
-        const result = await submitJson("/api/jobs", payload);
+        const result = await submitJson<{ job: SyncJobRow | null }>("/api/jobs", payload);
         if (!result.ok) {
           setState({ error: result.error, success: null });
           return;
         }
+
+        if (!result.data.job) {
+          setState({ error: "Job was created, but the server did not return its details.", success: null });
+          return;
+        }
+
         setState({ error: null, success: "Job created" });
-        event.currentTarget.reset();
-        window.location.reload();
+        window.location.replace(`/jobs/${result.data.job.id}`);
       }}
     >
       <Field>
