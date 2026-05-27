@@ -1,14 +1,7 @@
-import Link from "next/link";
 import { APP_NAME } from "@/lib/constants";
 import { LogoutButton } from "@/components/dashboard/forms";
+import { DashboardNav } from "@/components/dashboard/nav";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-
-const navigation = [
-  { href: "/jobs/new", label: "New job", description: "Create a message transfer task" },
-  { href: "/accounts", label: "Accounts", description: "Manage Telegram identities and dialogs" },
-  { href: "/settings", label: "Settings", description: "Review environment-backed configuration" },
-];
 
 export function DashboardLayoutShell({ children }: { children: React.ReactNode }) {
   return (
@@ -32,23 +25,7 @@ export function DashboardLayoutShell({ children }: { children: React.ReactNode }
               <LogoutButton />
             </div>
           </div>
-          <div className="grid gap-3 px-4 py-4 sm:px-6 lg:grid-cols-3">
-            {navigation.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "group rounded-[var(--radius)] border border-border/70 bg-white/60 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:bg-white/85 hover:shadow-[0_18px_38px_-26px_color-mix(in_oklab,var(--primary)_45%,transparent)]",
-                )}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium text-foreground transition group-hover:text-primary">{item.label}</p>
-                  <span className="text-muted-foreground transition group-hover:text-primary">→</span>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
-              </Link>
-            ))}
-          </div>
+          <DashboardNav />
         </header>
         <main className="flex flex-1 flex-col gap-6 pb-10">{children}</main>
       </div>
