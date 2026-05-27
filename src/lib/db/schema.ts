@@ -26,6 +26,15 @@ export const schemaStatements = [
     created_at TEXT NOT NULL,
     FOREIGN KEY(account_id) REFERENCES telegram_accounts(id) ON DELETE SET NULL
   );`,
+  `CREATE TABLE IF NOT EXISTS telegram_login_sessions (
+    account_id TEXT PRIMARY KEY,
+    phone_number TEXT NOT NULL,
+    phone_code_hash_encrypted TEXT NOT NULL,
+    session_encrypted TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(account_id) REFERENCES telegram_accounts(id) ON DELETE CASCADE
+  );`,
   `CREATE TABLE IF NOT EXISTS dialog_cache (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,

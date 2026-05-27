@@ -7,6 +7,7 @@ import type {
   MessageTransferRecordRow,
   SyncJobRow,
   TelegramAccountRow,
+  TelegramLoginSessionRow,
   WorkerHeartbeatRow,
   JobStatus,
 } from "@/lib/types";
@@ -128,6 +129,47 @@ export const accountRepository = {
     }
 
     return decryptString(account.session_encrypted);
+  },
+};
+
+export const telegramLoginSessionRepository = {
+  save(input: { accountId: string; phoneNumber: string; phoneCodeHash: string; sessionString: string }) {
+    const now = nowIso();
+    db().prepare(
+      `INSERT INTO telegram_login_sessions (
+        account_id, phone_number, phone_code_hash_encrypted, session_encrypted, started_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account_id)
+      DO UPDATE SET phone_number = excluded.phone_number,
+                    phone_code_hash_encrypted = excluded.phone_code_hash_encrypted,
+                    session_encrypted = excluded.session_encrypted,
+                    started_at = excluded.started_at,
+                    updated_at = excluded.updated_at`,
+    ).run(input.accountId, input.phoneNumber, encryptString(input.phoneCodeHash), encryptString(input.sessionString), now, now);
+  },
+  getActive(accountId: string) {
+    const row = db().prepare(`SELECT * FROM telegram_login_sessions WHERE account_id = ?`).get(accountId) as
+      | TelegramLoginSessionRow
+      | undefined;
+    if (!row) {
+      return null;
+    }
+
+    const expiresAt = new Date(row.started_at).getTime() + LOGIN_WINDOW_MINUTES * 60_000;
+    if (Number.isNaN(expiresAt) || Date.now() > expiresAt) {
+      this.delete(accountId);
+      return null;
+    }
+
+    return {
+      phoneNumber: row.phone_number,
+      phoneCodeHash: decryptString(row.phone_code_hash_encrypted),
+      sessionString: decryptString(row.session_encrypted),
+      startedAt: row.started_at,
+    };
+  },
+  delete(accountId: string) {
+    db().prepare(`DELETE FROM telegram_login_sessions WHERE account_id = ?`).run(accountId);
   },
 };
 

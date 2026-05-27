@@ -44,6 +44,15 @@ export type TelegramAccountRow = {
   last_connected_at: string | null;
 };
 
+export type TelegramLoginSessionRow = {
+  account_id: string;
+  phone_number: string;
+  phone_code_hash_encrypted: string;
+  session_encrypted: string;
+  started_at: string;
+  updated_at: string;
+};
+
 export type SyncJobRow = {
   id: string;
   account_id: string;
