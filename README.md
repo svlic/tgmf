@@ -93,8 +93,8 @@ docker compose logs -f web worker
 ## 当前限制
 
 - 当前设计为单机、单 Worker 模式。
-- `copy` 模式目前对纯文本消息支持较稳定，媒体复制链路尚未完全实现。
+- `copy` 模式支持纯文本消息和单条媒体消息复制；相册媒体仍受下方限制约束。
 - 相册消息处理仍不完整：
   - `captioned_only` 仅为基础实现
   - `full_group` 仍需要更完整的分组媒体处理逻辑
-- Telegram 登录流程中，等待验证码确认的临时状态当前保存在进程内存中。
+- Telegram 登录流程中，等待验证码或两步验证确认时使用的临时 `phoneCodeHash` 和 Telegram 会话字符串会加密持久化到 SQLite；手机号仍按账号元数据保存，整体仍只适合当前单机部署模型。

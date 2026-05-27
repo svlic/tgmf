@@ -1,8 +1,13 @@
 import { Api } from "telegram/tl";
 import { createTelegramClient } from "@/lib/telegram/client";
-import { accountRepository, dialogRepository, transferRecordRepository, jobRepository } from "@/lib/db/repositories";
+import {
+  accountRepository,
+  dialogRepository,
+  telegramLoginSessionRepository,
+  transferRecordRepository,
+  jobRepository,
+} from "@/lib/db/repositories";
 import type { DialogCacheRow, SyncJobRow } from "@/lib/types";
-import { LOGIN_WINDOW_MINUTES } from "@/lib/constants";
 import { nowIso, safeErrorMessage, sleep } from "@/lib/utils";
 
 export type StartLoginResult = {
@@ -21,24 +26,8 @@ type ForwardResult = {
   sourceMessages: MessageLike[];
 };
 
-const loginSessions = new Map<
-  string,
-  { phoneNumber: string; phoneCodeHash: string; sessionString: string; startedAt: number }
->();
-
 function getActiveLoginSession(accountId: string) {
-  const loginSession = loginSessions.get(accountId);
-  if (!loginSession) {
-    return null;
-  }
-
-  const expiresAt = loginSession.startedAt + LOGIN_WINDOW_MINUTES * 60_000;
-  if (Date.now() > expiresAt) {
-    loginSessions.delete(accountId);
-    return null;
-  }
-
-  return loginSession;
+  return telegramLoginSessionRepository.getActive(accountId);
 }
 
 export async function testAccountConnectivity(accountId: string) {
@@ -66,11 +55,11 @@ export async function beginPhoneLogin(accountId: string, phoneNumberOverride?: s
     await client.connect();
     const result = await client.sendCode({ apiId: client.apiId, apiHash: client.apiHash }, phoneNumber);
 
-    loginSessions.set(accountId, {
+    telegramLoginSessionRepository.save({
+      accountId,
       phoneNumber,
       phoneCodeHash: result.phoneCodeHash,
       sessionString: session.save(),
-      startedAt: Date.now(),
     });
     accountRepository.setLoginState(accountId, "awaiting_code", "Verification code requested");
     return { loginState: "awaiting_code" } satisfies StartLoginResult;
@@ -98,7 +87,7 @@ export async function completePhoneCodeLogin(accountId: string, phoneCode: strin
     );
     const me = await client.getMe();
     accountRepository.saveSession(accountId, session.save(), "ready", me?.id ? String(me.id) : null);
-    loginSessions.delete(accountId);
+    telegramLoginSessionRepository.delete(accountId);
     return { loginState: "ready" as const };
   } catch (error) {
     if (safeErrorMessage(error).toLowerCase().includes("password")) {
@@ -129,7 +118,7 @@ export async function completePasswordLogin(accountId: string, password: string)
       },
     );
     accountRepository.saveSession(accountId, session.save(), "ready", me?.id ? String(me.id) : null);
-    loginSessions.delete(accountId);
+    telegramLoginSessionRepository.delete(accountId);
     return { loginState: "ready" as const };
   } finally {
     await client.disconnect();
@@ -280,14 +269,21 @@ async function copyMessage(client: Awaited<ReturnType<typeof createTelegramClien
   if (!message.id) {
     throw new Error("Message missing id");
   }
-
-  if (message.media) {
-    throw new Error("Copy mode for media is not fully implemented in v1");
+  if (message.noforwards) {
+    throw new Error("Message is protected by Telegram no-forward restrictions");
   }
 
-  const result = await client.sendMessage(job.target_channel_ref, {
-    message: message.message || "",
-  });
+  const caption = message.message ?? "";
+  const result = message.media
+    ? await client.sendFile(job.target_channel_ref, {
+        file: message.media,
+        caption,
+        formattingEntities: message.entities,
+      })
+    : await client.sendMessage(job.target_channel_ref, {
+        message: caption,
+        formattingEntities: message.entities,
+      });
 
   return result.id ?? null;
 }
