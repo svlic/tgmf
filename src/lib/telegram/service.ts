@@ -27,7 +27,7 @@ type MessageLike = {
 
 type ForwardedMessage = {
   sourceMessage: MessageLike & { id: number };
-  targetMessageId: number;
+  targetMessageId: number | null;
 };
 
 type ForwardResult = {
@@ -477,18 +477,17 @@ async function forwardMessages(
     messages: sourceMessageIds,
   });
 
-  const targetMessageIds = sentMessages
-    .map((message) => message?.id)
-    .filter((messageId): messageId is number => typeof messageId === "number");
-  const sent = targetMessageIds.map((targetMessageId, index) => ({
-    sourceMessage: forwardableMessages[index],
-    targetMessageId,
-  }));
-  const failedForwardMessages = forwardableMessages.slice(targetMessageIds.length);
+  const sent = forwardableMessages.map((sourceMessage, index) => {
+    const targetMessageId = sentMessages[index]?.id;
+    return {
+      sourceMessage,
+      targetMessageId: typeof targetMessageId === "number" ? targetMessageId : null,
+    } satisfies ForwardedMessage;
+  });
 
   return {
     sent,
-    skipped: [...skipped, ...failedForwardMessages],
+    skipped,
   };
 }
 
