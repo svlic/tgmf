@@ -8,7 +8,8 @@ import {
   transferRecordRepository,
   jobRepository,
 } from "@/lib/db/repositories";
-import type { DialogCacheRow, SyncJobRow } from "@/lib/types";
+import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
+import type { AllowedMediaType, DialogCacheRow, SyncJobRow } from "@/lib/types";
 import { nowIso, safeErrorMessage, sleep } from "@/lib/utils";
 
 export type StartLoginResult = {
@@ -24,9 +25,14 @@ type MessageLike = {
   noforwards?: boolean;
 };
 
+type ForwardedMessage = {
+  sourceMessage: MessageLike;
+  targetMessageId: number;
+};
+
 type ForwardResult = {
-  targetMessageIds: number[];
-  sourceMessages: MessageLike[];
+  sent: ForwardedMessage[];
+  skipped: MessageLike[];
 };
 
 type DocumentLike = {
@@ -233,6 +239,106 @@ function isPhotoMessage(message: MessageLike) {
   return message.media instanceof Api.MessageMediaPhoto;
 }
 
+function normalizeAllowedMediaType(value: unknown): AllowedMediaType | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  if (ALLOWED_MEDIA_TYPES.includes(value as AllowedMediaType)) {
+    return value as AllowedMediaType;
+  }
+  if (["video_note", "sticker", "animation"].includes(value)) {
+    return "other";
+  }
+
+  return null;
+}
+
+function parseAllowedMediaTypes(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return new Set<AllowedMediaType>();
+    }
+
+    return new Set(parsed.map(normalizeAllowedMediaType).filter((mediaType): mediaType is AllowedMediaType => mediaType !== null));
+  } catch {
+    return new Set<AllowedMediaType>();
+  }
+}
+
+function getMessageMediaType(message: MessageLike): AllowedMediaType {
+  if (!message.media) {
+    return typeof message.message === "string" && message.message.trim().length > 0 ? "text" : "other";
+  }
+  if (isPhotoMessage(message)) {
+    return "photo";
+  }
+
+  const document = getDocumentFromMessage(message);
+  if (!document) {
+    return "other";
+  }
+
+  const attributes = document.attributes ?? [];
+  if (attributes.some((attribute) => attribute instanceof Api.DocumentAttributeSticker)) {
+    return "other";
+  }
+
+  const videoAttribute = attributes.find(
+    (attribute): attribute is Api.DocumentAttributeVideo => attribute instanceof Api.DocumentAttributeVideo,
+  );
+  if (videoAttribute) {
+    return videoAttribute.roundMessage ? "other" : "video";
+  }
+
+  const audioAttribute = attributes.find(
+    (attribute): attribute is Api.DocumentAttributeAudio => attribute instanceof Api.DocumentAttributeAudio,
+  );
+  if (audioAttribute) {
+    return audioAttribute.voice ? "voice" : "audio";
+  }
+
+  if (attributes.some((attribute) => attribute instanceof Api.DocumentAttributeAnimated)) {
+    return "other";
+  }
+
+  if (document.mimeType?.startsWith("video/")) {
+    return "video";
+  }
+  if (document.mimeType?.startsWith("audio/")) {
+    return "audio";
+  }
+
+  return "document";
+}
+
+function isMessageAllowedByMediaTypes(message: MessageLike, allowedMediaTypes: Set<AllowedMediaType>) {
+  if (allowedMediaTypes.size === 0) {
+    return true;
+  }
+
+  return allowedMediaTypes.has(getMessageMediaType(message));
+}
+
+function filterMessagesByAllowedMediaTypes(messages: MessageLike[], allowedMediaTypes: Set<AllowedMediaType>) {
+  if (allowedMediaTypes.size === 0) {
+    return { allowed: messages, skipped: [] };
+  }
+
+  const allowed: MessageLike[] = [];
+  const skipped: MessageLike[] = [];
+
+  for (const message of messages) {
+    if (isMessageAllowedByMediaTypes(message, allowedMediaTypes)) {
+      allowed.push(message);
+    } else {
+      skipped.push(message);
+    }
+  }
+
+  return { allowed, skipped };
+}
+
 function getDocumentFilename(document: DocumentLike | null) {
   const filenameAttribute = document?.attributes?.find(
     (attribute): attribute is Api.DocumentAttributeFilename => attribute instanceof Api.DocumentAttributeFilename,
@@ -325,6 +431,10 @@ function buildCopiedMediaUpload(message: MessageLike, downloaded: Buffer): Copie
 
 function isMessageInJobRange(message: MessageLike, job: SyncJobRow) {
   return typeof message.id === "number" && message.id >= job.start_message_id && message.id <= job.end_message_id;
+}
+
+function isForwardableMessage(message: MessageLike): message is MessageLike & { id: number } {
+  return message instanceof Api.Message && typeof message.id === "number";
 }
 
 async function fetchAlbumMessages(
@@ -438,7 +548,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
       try {
         const alreadyTransferred = transferRecordRepository.getByJobAndSourceMessageId(job.id, messageId);
-        if (alreadyTransferred?.status === "sent") {
+        if (alreadyTransferred?.status === "sent" || alreadyTransferred?.status === "skipped") {
           jobRepository.recordProgress(job.id, {
             nextMessageId: messageIds[index + 1] ?? null,
           });
@@ -482,6 +592,29 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           messagesToForward = [selected];
         }
 
+        const mediaFilter = parseAllowedMediaTypes(currentJob.allowed_media_types);
+        const filteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
+        filteredMessages.skipped.forEach((message) => {
+          if (!message.id) {
+            return;
+          }
+          transferRecordRepository.upsert({
+            jobId: job.id,
+            sourceMessageId: message.id,
+            mediaGroupId: getGroupedIdKey(message),
+            status: "skipped",
+            errorReason: "Skipped by media type filter",
+          });
+        });
+        if (filteredMessages.allowed.length === 0) {
+          jobRepository.recordProgress(job.id, {
+            nextMessageId: messageIds[index + 1] ?? null,
+            skippedIncrement: filteredMessages.skipped.length,
+          });
+          continue;
+        }
+        messagesToForward = filteredMessages.allowed;
+
         if (job.mode === "forward") {
           const forwardResult = await forwardMessages(client, job, messagesToForward);
           forwardResult.sourceMessages.forEach((message, messageIndex) => {
@@ -499,19 +632,45 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           jobRepository.recordProgress(job.id, {
             nextMessageId: messageIds[index + 1] ?? null,
             succeededIncrement: forwardResult.sourceMessages.length,
+            skippedIncrement: filteredMessages.skipped.length,
           });
         } else {
-          const targetMessageId = await copyMessage(client, job, sourceMessage as MessageLike);
+          const messageToCopy = messagesToForward.find(
+            (message): message is MessageLike & { id: number } => message.id === messageId,
+          );
+          if (!messageToCopy) {
+            jobRepository.recordProgress(job.id, {
+              nextMessageId: messageIds[index + 1] ?? null,
+              skippedIncrement: filteredMessages.skipped.length,
+            });
+            continue;
+          }
+
+          const skippedCopyAlbumMessages = messagesToForward.filter(
+            (message): message is MessageLike & { id: number } => typeof message.id === "number" && message.id !== messageToCopy.id,
+          );
+          skippedCopyAlbumMessages.forEach((message) => {
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId: message.id,
+              mediaGroupId: getGroupedIdKey(message),
+              status: "skipped",
+              errorReason: "Skipped because copy mode only copies one album message",
+            });
+          });
+
+          const targetMessageId = await copyMessage(client, job, messageToCopy);
           transferRecordRepository.upsert({
             jobId: job.id,
-            sourceMessageId: sourceMessage.id,
+            sourceMessageId: messageToCopy.id,
             targetMessageId,
-            mediaGroupId: sourceMessage.groupedId ? String(sourceMessage.groupedId) : null,
+            mediaGroupId: getGroupedIdKey(messageToCopy),
             status: "sent",
           });
           jobRepository.recordProgress(job.id, {
             nextMessageId: messageIds[index + 1] ?? null,
             succeededIncrement: 1,
+            skippedIncrement: filteredMessages.skipped.length + skippedCopyAlbumMessages.length,
           });
         }
       } catch (error) {
