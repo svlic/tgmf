@@ -464,11 +464,12 @@ async function forwardMessages(
   job: SyncJobRow,
   sourceMessages: MessageLike[],
 ): Promise<ForwardResult> {
-  const sourceMessageIds = sourceMessages
-    .map((message) => message.id)
-    .filter((messageId): messageId is number => typeof messageId === "number");
+  const forwardableMessages = sourceMessages.filter(isForwardableMessage);
+  const skipped = sourceMessages.filter((message) => !isForwardableMessage(message));
+  const sourceMessageIds = forwardableMessages.map((message) => message.id);
+
   if (sourceMessageIds.length === 0) {
-    throw new Error("Message missing id");
+    return { sent: [], skipped };
   }
 
   const sentMessages = await client.forwardMessages(job.target_channel_ref, {
@@ -476,14 +477,18 @@ async function forwardMessages(
     messages: sourceMessageIds,
   });
 
-  const targetMessageIds = sentMessages.map((message) => message.id).filter((messageId): messageId is number => typeof messageId === "number");
-  if (targetMessageIds.length !== sourceMessageIds.length) {
-    throw new Error(`Forwarded message count mismatch: expected ${sourceMessageIds.length}, got ${targetMessageIds.length}`);
-  }
+  const targetMessageIds = sentMessages
+    .map((message) => message?.id)
+    .filter((messageId): messageId is number => typeof messageId === "number");
+  const sent = targetMessageIds.map((targetMessageId, index) => ({
+    sourceMessage: forwardableMessages[index],
+    targetMessageId,
+  }));
+  const failedForwardMessages = forwardableMessages.slice(targetMessageIds.length);
 
   return {
-    targetMessageIds,
-    sourceMessages,
+    sent,
+    skipped: [...skipped, ...failedForwardMessages],
   };
 }
 
@@ -617,22 +622,31 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
         if (job.mode === "forward") {
           const forwardResult = await forwardMessages(client, job, messagesToForward);
-          forwardResult.sourceMessages.forEach((message, messageIndex) => {
+          forwardResult.sent.forEach(({ sourceMessage, targetMessageId }) => {
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId: sourceMessage.id,
+              targetMessageId,
+              mediaGroupId: getGroupedIdKey(sourceMessage),
+              status: "sent",
+            });
+          });
+          forwardResult.skipped.forEach((message) => {
             if (!message.id) {
               return;
             }
             transferRecordRepository.upsert({
               jobId: job.id,
               sourceMessageId: message.id,
-              targetMessageId: forwardResult.targetMessageIds[messageIndex] ?? null,
               mediaGroupId: getGroupedIdKey(message),
-              status: "sent",
+              status: "skipped",
+              errorReason: "Skipped because Telegram did not return a forwarded message",
             });
           });
           jobRepository.recordProgress(job.id, {
             nextMessageId: messageIds[index + 1] ?? null,
-            succeededIncrement: forwardResult.sourceMessages.length,
-            skippedIncrement: filteredMessages.skipped.length,
+            succeededIncrement: forwardResult.sent.length,
+            skippedIncrement: filteredMessages.skipped.length + forwardResult.skipped.length,
           });
         } else {
           const messageToCopy = messagesToForward.find(
