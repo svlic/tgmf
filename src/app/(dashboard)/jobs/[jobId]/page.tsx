@@ -19,6 +19,37 @@ import {
   DataTableRow,
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
+import type { AllowedMediaType } from "@/lib/types";
+
+function normalizeAllowedMediaType(value: unknown): AllowedMediaType | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  if (ALLOWED_MEDIA_TYPES.includes(value as AllowedMediaType)) {
+    return value as AllowedMediaType;
+  }
+  if (["video_note", "sticker", "animation"].includes(value)) {
+    return "other";
+  }
+
+  return null;
+}
+
+function parseAllowedMediaTypes(value: string): AllowedMediaType[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map(normalizeAllowedMediaType)
+      .filter((mediaType): mediaType is AllowedMediaType => mediaType !== null);
+  } catch {
+    return [];
+  }
+}
 
 function statusVariant(status: string) {
   if (["completed"].includes(status)) {
@@ -45,6 +76,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
   }
 
   const records = transferRecordRepository.listForJob(jobId);
+  const allowedMediaTypes = parseAllowedMediaTypes(job.allowed_media_types);
   const progressPercent = job.total_messages > 0 ? Math.min(100, Math.round((job.processed_messages / job.total_messages) * 100)) : 0;
   const shouldRefreshProgress = ["pending", "running"].includes(job.status);
 
@@ -107,10 +139,22 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
             </div>
             <JobActionButtons jobId={job.id} status={job.status} />
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
               <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Account ID</p>
                 <p className="mt-2 truncate font-mono text-xs font-medium text-foreground" title={job.account_id}>{job.account_id}</p>
+              </div>
+              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Media filter</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {allowedMediaTypes.length === 0 ? (
+                    <span className="text-sm leading-6 text-muted-foreground">All supported media types</span>
+                  ) : (
+                    allowedMediaTypes.map((mediaType) => (
+                      <Badge key={mediaType} variant="blue">{mediaType}</Badge>
+                    ))
+                  )}
+                </div>
               </div>
               <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last error</p>
