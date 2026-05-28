@@ -34,6 +34,12 @@ type DocumentLike = {
   attributes?: Api.TypeDocumentAttribute[];
 };
 
+type CopiedMediaUpload = {
+  file: CustomFile;
+  attributes?: Api.TypeDocumentAttribute[];
+  supportsStreaming: boolean;
+};
+
 function getActiveLoginSession(accountId: string) {
   return telegramLoginSessionRepository.getActive(accountId);
 }
@@ -223,12 +229,20 @@ function getDocumentFromMessage(message: MessageLike) {
   return message.media instanceof Api.MessageMediaDocument && message.media.document instanceof Api.Document ? message.media.document : null;
 }
 
+function isPhotoMessage(message: MessageLike) {
+  return message.media instanceof Api.MessageMediaPhoto;
+}
+
 function getDocumentFilename(document: DocumentLike | null) {
   const filenameAttribute = document?.attributes?.find(
     (attribute): attribute is Api.DocumentAttributeFilename => attribute instanceof Api.DocumentAttributeFilename,
   );
 
   return filenameAttribute?.fileName ?? null;
+}
+
+function filenameHasExtension(filename: string) {
+  return /\.[^./\\]+$/.test(filename);
 }
 
 function getExtensionFromMimeType(mimeType: string | undefined) {
@@ -258,19 +272,55 @@ function getExtensionFromMimeType(mimeType: string | undefined) {
 }
 
 function buildCopiedMediaFilename(message: MessageLike) {
+  if (isPhotoMessage(message)) {
+    return `telegram-photo-${message.id}.jpg`;
+  }
+
   const document = getDocumentFromMessage(message);
   const existingName = getDocumentFilename(document);
   if (existingName) {
-    return existingName;
+    if (filenameHasExtension(existingName)) {
+      return existingName;
+    }
+
+    const extension = getExtensionFromMimeType(document?.mimeType);
+    return extension ? `${existingName}.${extension}` : existingName;
   }
 
   const extension = getExtensionFromMimeType(document?.mimeType);
   return extension ? `telegram-media-${message.id}.${extension}` : `telegram-media-${message.id}`;
 }
 
-function isVideoDocument(message: MessageLike) {
+function getCopiedDocumentAttributes(message: MessageLike) {
+  if (isPhotoMessage(message)) {
+    return undefined;
+  }
+
+  return getDocumentFromMessage(message)?.attributes;
+}
+
+function getVideoAttribute(message: MessageLike) {
+  return getDocumentFromMessage(message)?.attributes?.find(
+    (attribute): attribute is Api.DocumentAttributeVideo => attribute instanceof Api.DocumentAttributeVideo,
+  );
+}
+
+function supportsVideoStreaming(message: MessageLike) {
+  const videoAttribute = getVideoAttribute(message);
+  if (videoAttribute) {
+    return videoAttribute.supportsStreaming ?? false;
+  }
+
   const document = getDocumentFromMessage(message);
   return document?.mimeType?.startsWith("video/") ?? false;
+}
+
+function buildCopiedMediaUpload(message: MessageLike, downloaded: Buffer): CopiedMediaUpload {
+  return {
+    file: new CustomFile(buildCopiedMediaFilename(message), downloaded.length, "", downloaded),
+    attributes: getCopiedDocumentAttributes(message),
+    supportsStreaming: supportsVideoStreaming(message),
+  };
 }
 
 function isMessageInJobRange(message: MessageLike, job: SyncJobRow) {
@@ -349,12 +399,13 @@ async function copyMessage(client: Awaited<ReturnType<typeof createTelegramClien
     throw new Error(`Failed to download media from message ${message.id}`);
   }
 
-  const file = new CustomFile(buildCopiedMediaFilename(message), downloaded.length, "", downloaded);
+  const upload = buildCopiedMediaUpload(message, downloaded);
   const result = await client.sendFile(job.target_channel_ref, {
-    file,
+    file: upload.file,
     caption,
     formattingEntities: message.entities,
-    supportsStreaming: isVideoDocument(message),
+    attributes: upload.attributes,
+    supportsStreaming: upload.supportsStreaming,
   });
 
   return result.id ?? null;
