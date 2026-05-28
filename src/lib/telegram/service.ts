@@ -26,7 +26,7 @@ type MessageLike = {
 };
 
 type ForwardedMessage = {
-  sourceMessage: MessageLike;
+  sourceMessage: MessageLike & { id: number };
   targetMessageId: number;
 };
 
