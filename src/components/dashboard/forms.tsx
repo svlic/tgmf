@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "@/components/ui/field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 import type { SyncJobRow } from "@/lib/types";
 
 type FormState = {
@@ -235,6 +236,7 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
           mode: String(formData.get("mode") || "forward"),
           albumStrategy: String(formData.get("albumStrategy") || "full_group"),
           delaySeconds: Number(formData.get("delaySeconds") || 2),
+          allowedMediaTypes: formData.getAll("allowedMediaTypes").map(String),
         };
         const result = await submitJson<{ job: SyncJobRow | null }>("/api/jobs", payload);
         if (!result.ok) {
@@ -304,6 +306,18 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
           <FieldLabel htmlFor="delaySeconds">Delay between messages</FieldLabel>
           <Input id="delaySeconds" name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="2" required />
           <FieldDescription>Throttle sends when the target channel is rate sensitive.</FieldDescription>
+        </Field>
+        <Field className="md:col-span-2">
+          <FieldLabel>Allowed media types</FieldLabel>
+          <div className="grid gap-2 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+            {ALLOWED_MEDIA_TYPES.map((mediaType) => (
+              <label key={mediaType} className="flex items-center gap-2 rounded-[var(--radius)] bg-white/55 px-3 py-2 text-sm text-foreground shadow-sm shadow-black/5">
+                <input type="checkbox" name="allowedMediaTypes" value={mediaType} className="size-4 rounded border-border text-foreground accent-foreground" />
+                <span>{mediaType}</span>
+              </label>
+            ))}
+          </div>
+          <FieldDescription>Leave all media types unchecked to allow every supported type with no filtering.</FieldDescription>
         </Field>
         <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
           <Button type="submit" disabled={!hasAccounts}>Create job</Button>

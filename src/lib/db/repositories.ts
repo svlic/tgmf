@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db/client";
 import { DEFAULT_DELAY_SECONDS, LOGIN_WINDOW_MINUTES, MAX_LOGIN_ATTEMPTS } from "@/lib/constants";
 import { encryptString, decryptString } from "@/lib/crypto";
 import type {
+  AllowedMediaType,
   AppSettingRow,
   DialogCacheRow,
   MessageTransferRecordRow,
@@ -29,6 +30,7 @@ export type JobInput = {
   jobOrder: SyncJobRow["job_order"];
   mode: SyncJobRow["mode"];
   albumStrategy: SyncJobRow["album_strategy"];
+  allowedMediaTypes?: AllowedMediaType[];
   delaySeconds?: number;
 };
 
@@ -262,10 +264,11 @@ export const jobRepository = {
     db().prepare(
       `INSERT INTO sync_jobs (
         id, account_id, source_channel_ref, target_channel_ref, start_message_id, end_message_id,
-        job_order, mode, album_strategy, delay_seconds, status, total_messages, processed_messages,
-        succeeded_messages, skipped_messages, failed_messages, next_message_id, worker_id,
-        last_error_code, last_error_message, cancel_requested_at, started_at, finished_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
+        job_order, mode, album_strategy, allowed_media_types, delay_seconds, status, total_messages,
+        processed_messages, succeeded_messages, skipped_messages, failed_messages, next_message_id,
+        worker_id, last_error_code, last_error_message, cancel_requested_at, started_at, finished_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
     ).run(
       id,
       input.accountId,
@@ -276,6 +279,7 @@ export const jobRepository = {
       input.jobOrder,
       input.mode,
       input.albumStrategy,
+      JSON.stringify(input.allowedMediaTypes ?? []),
       input.delaySeconds ?? DEFAULT_DELAY_SECONDS,
       totalMessages,
       nextMessageId,

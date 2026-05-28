@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_DELAY_SECONDS } from "@/lib/constants";
+import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 
 export const loginSchema = z.object({
   password: z.string().min(1),
@@ -34,6 +35,7 @@ export const jobSchema = z
     jobOrder: z.enum(["asc", "desc"]),
     mode: z.enum(["forward", "copy"]),
     albumStrategy: z.enum(["full_group", "captioned_only"]),
+    allowedMediaTypes: z.array(z.enum(ALLOWED_MEDIA_TYPES)).default([]),
     delaySeconds: z.coerce.number().int().min(0).max(600).default(DEFAULT_DELAY_SECONDS),
   })
   .refine((value) => value.startMessageId <= value.endMessageId, {

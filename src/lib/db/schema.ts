@@ -58,6 +58,7 @@ export const schemaStatements = [
     job_order TEXT NOT NULL,
     mode TEXT NOT NULL,
     album_strategy TEXT NOT NULL,
+    allowed_media_types TEXT NOT NULL DEFAULT '[]',
     delay_seconds INTEGER NOT NULL,
     status TEXT NOT NULL,
     total_messages INTEGER NOT NULL,

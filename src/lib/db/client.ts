@@ -18,6 +18,21 @@ function resolveDatabasePath() {
 
 let database: Database.Database | null = null;
 
+type TableInfoRow = {
+  name: string;
+};
+
+function ensureColumn(db: Database.Database, tableName: string, columnName: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as TableInfoRow[];
+  if (!columns.some((column) => column.name === columnName)) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${definition}`);
+  }
+}
+
+function runCompatibilityMigrations(db: Database.Database) {
+  ensureColumn(db, "sync_jobs", "allowed_media_types", "allowed_media_types TEXT NOT NULL DEFAULT '[]'");
+}
+
 export function getDb() {
   if (!database) {
     const databasePath = resolveDatabasePath();
@@ -33,6 +48,7 @@ export function getDb() {
     for (const statement of schemaStatements) {
       database.exec(statement);
     }
+    runCompatibilityMigrations(database);
   }
 
   return database;

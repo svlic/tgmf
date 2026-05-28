@@ -24,6 +24,7 @@ export async function POST(request: Request) {
         jobOrder: payload.jobOrder,
         mode: payload.mode,
         albumStrategy: payload.albumStrategy,
+        allowedMediaTypes: payload.allowedMediaTypes,
         delaySeconds: payload.delaySeconds,
       }),
     );
