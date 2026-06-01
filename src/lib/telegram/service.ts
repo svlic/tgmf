@@ -1,3 +1,6 @@
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { Api } from "telegram/tl";
 import { CustomFile } from "telegram/client/uploads";
 import { createTelegramClient } from "@/lib/telegram/client";
@@ -7,6 +10,7 @@ import {
   telegramLoginSessionRepository,
   transferRecordRepository,
   jobRepository,
+  workerRepository,
 } from "@/lib/db/repositories";
 import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 import type { AllowedMediaType, DialogCacheRow, SyncJobRow } from "@/lib/types";
@@ -45,6 +49,17 @@ type CopiedMediaUpload = {
   attributes?: Api.TypeDocumentAttribute[];
   supportsStreaming: boolean;
 };
+
+type CopyPhaseDetails = {
+  phase: string;
+  sourceMessageId: number;
+  mediaBytes?: number;
+  downloadedBytes?: string;
+  totalBytes?: string;
+  progress?: number;
+};
+
+type CopyPhaseCallback = (details: CopyPhaseDetails) => void;
 
 function getActiveLoginSession(accountId: string) {
   return telegramLoginSessionRepository.getActive(accountId);
@@ -266,6 +281,120 @@ function parseAllowedMediaTypes(value: string) {
   }
 }
 
+const MAX_FILTER_ITEMS = 50;
+const MAX_REGEX_TEXT_LENGTH = 4096;
+const COPY_PROGRESS_REPORT_INTERVAL_MS = 2_000;
+const COPY_PROGRESS_REPORT_PERCENT_STEP = 5;
+const TELEGRAM_TRANSFER_LOG_PREFIX = "[telegram-transfer]";
+
+type MessageTextFilter = {
+  keywordWhitelist: string[];
+  keywordBlacklist: string[];
+  regexWhitelist: RegExp[];
+  regexBlacklist: RegExp[];
+};
+
+function parseStringList(value: string) {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .slice(0, MAX_FILTER_ITEMS);
+  } catch {
+    return [];
+  }
+}
+
+function hasNestedQuantifier(pattern: string) {
+  return /\([^)]*[+*][^)]*\)\s*(?:[+*]|\{\d*,?\d*\})/.test(pattern);
+}
+
+function compileRegexFilters(patterns: string[]) {
+  const filters: RegExp[] = [];
+  for (const pattern of patterns) {
+    if (hasNestedQuantifier(pattern)) {
+      continue;
+    }
+
+    try {
+      filters.push(new RegExp(pattern, "i"));
+    } catch {
+      continue;
+    }
+  }
+
+  return filters;
+}
+
+function parseMessageTextFilter(job: SyncJobRow): MessageTextFilter {
+  const regexWhitelist = parseStringList(job.regex_whitelist);
+  const regexBlacklist = parseStringList(job.regex_blacklist);
+
+  return {
+    keywordWhitelist: parseStringList(job.keyword_whitelist).map((keyword) => keyword.toLowerCase()),
+    keywordBlacklist: parseStringList(job.keyword_blacklist).map((keyword) => keyword.toLowerCase()),
+    regexWhitelist: compileRegexFilters(regexWhitelist),
+    regexBlacklist: compileRegexFilters(regexBlacklist),
+  };
+}
+
+function getMessageText(message: MessageLike) {
+  return (message.message ?? "").trim();
+}
+
+function matchesAnyKeyword(text: string, keywords: string[]) {
+  if (keywords.length === 0) {
+    return false;
+  }
+
+  const normalizedText = text.toLowerCase();
+  return keywords.some((keyword) => normalizedText.includes(keyword));
+}
+
+function matchesAnyRegex(text: string, patterns: RegExp[]) {
+  const matchText = text.slice(0, MAX_REGEX_TEXT_LENGTH);
+
+  return patterns.some((pattern) => {
+    pattern.lastIndex = 0;
+    return pattern.test(matchText);
+  });
+}
+
+function isMessageAllowedByTextFilter(message: MessageLike, filter: MessageTextFilter) {
+  const text = getMessageText(message);
+  if (matchesAnyKeyword(text, filter.keywordBlacklist) || matchesAnyRegex(text, filter.regexBlacklist)) {
+    return false;
+  }
+
+  const hasWhitelist = filter.keywordWhitelist.length > 0 || filter.regexWhitelist.length > 0;
+  if (!hasWhitelist) {
+    return true;
+  }
+
+  return matchesAnyKeyword(text, filter.keywordWhitelist) || matchesAnyRegex(text, filter.regexWhitelist);
+}
+
+function filterMessagesByTextFilter(messages: MessageLike[], filter: MessageTextFilter) {
+  const allowed: MessageLike[] = [];
+  const skipped: MessageLike[] = [];
+
+  for (const message of messages) {
+    if (isMessageAllowedByTextFilter(message, filter)) {
+      allowed.push(message);
+    } else {
+      skipped.push(message);
+    }
+  }
+
+  return { allowed, skipped };
+}
+
 function getMessageMediaType(message: MessageLike): AllowedMediaType {
   if (!message.media) {
     return typeof message.message === "string" && message.message.trim().length > 0 ? "text" : "other";
@@ -351,6 +480,19 @@ function filenameHasExtension(filename: string) {
   return /\.[^./\\]+$/.test(filename);
 }
 
+function sanitizeTelegramFilename(filename: string) {
+  const basename = path.basename(filename).replace(/[\u0000-\u001f\u007f/\\]/g, "_").trim();
+  return basename.length > 0 && basename !== "." && basename !== ".." ? basename : null;
+}
+
+function assertPathInsideDirectory(filePath: string, directory: string) {
+  const resolvedDirectory = path.resolve(directory);
+  const resolvedFilePath = path.resolve(filePath);
+  if (!resolvedFilePath.startsWith(`${resolvedDirectory}${path.sep}`)) {
+    throw new Error("Copy media temp file path escaped its temporary directory");
+  }
+}
+
 function getExtensionFromMimeType(mimeType: string | undefined) {
   if (!mimeType) {
     return null;
@@ -384,13 +526,14 @@ function buildCopiedMediaFilename(message: MessageLike) {
 
   const document = getDocumentFromMessage(message);
   const existingName = getDocumentFilename(document);
-  if (existingName) {
-    if (filenameHasExtension(existingName)) {
-      return existingName;
+  const sanitizedName = existingName ? sanitizeTelegramFilename(existingName) : null;
+  if (sanitizedName) {
+    if (filenameHasExtension(sanitizedName)) {
+      return sanitizedName;
     }
 
     const extension = getExtensionFromMimeType(document?.mimeType);
-    return extension ? `${existingName}.${extension}` : existingName;
+    return extension ? `${sanitizedName}.${extension}` : sanitizedName;
   }
 
   const extension = getExtensionFromMimeType(document?.mimeType);
@@ -421,12 +564,41 @@ function supportsVideoStreaming(message: MessageLike) {
   return document?.mimeType?.startsWith("video/") ?? false;
 }
 
-function buildCopiedMediaUpload(message: MessageLike, downloaded: Buffer): CopiedMediaUpload {
+function buildCopiedMediaUpload(message: MessageLike, filePath: string, fileSize: number, filename: string): CopiedMediaUpload {
   return {
-    file: new CustomFile(buildCopiedMediaFilename(message), downloaded.length, "", downloaded),
+    file: new CustomFile(filename, fileSize, filePath),
     attributes: getCopiedDocumentAttributes(message),
     supportsStreaming: supportsVideoStreaming(message),
   };
+}
+
+function reportCopyPhase(onPhase: CopyPhaseCallback | undefined, details: CopyPhaseDetails) {
+  onPhase?.(details);
+  console.info(TELEGRAM_TRANSFER_LOG_PREFIX, "Copy media phase", details);
+}
+
+function createCopyProgressReporter(onPhase: CopyPhaseCallback | undefined, sourceMessageId: number, mediaBytes?: number) {
+  let lastReportAt = 0;
+  let lastProgressBucket = -1;
+
+  return (details: Omit<CopyPhaseDetails, "sourceMessageId" | "mediaBytes">) => {
+    const now = Date.now();
+    const progressBucket = typeof details.progress === "number" ? Math.floor(details.progress / COPY_PROGRESS_REPORT_PERCENT_STEP) : -1;
+    const shouldReportByProgress = progressBucket >= 0 && progressBucket !== lastProgressBucket;
+    const shouldReportByTime = now - lastReportAt >= COPY_PROGRESS_REPORT_INTERVAL_MS;
+
+    if (!shouldReportByProgress && !shouldReportByTime) {
+      return;
+    }
+
+    lastReportAt = now;
+    lastProgressBucket = progressBucket;
+    reportCopyPhase(onPhase, { ...details, sourceMessageId, mediaBytes });
+  };
+}
+
+async function createCopyTempDirectory(jobId: string, messageId: number) {
+  return mkdtemp(path.join(tmpdir(), `tgmf-${jobId}-${messageId}-`));
 }
 
 function isMessageInJobRange(message: MessageLike, job: SyncJobRow) {
@@ -491,7 +663,12 @@ async function forwardMessages(
   };
 }
 
-async function copyMessage(client: Awaited<ReturnType<typeof createTelegramClient>>["client"], job: SyncJobRow, message: MessageLike) {
+async function copyMessage(
+  client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
+  job: SyncJobRow,
+  message: MessageLike,
+  onPhase?: CopyPhaseCallback,
+) {
   if (!message.id) {
     throw new Error("Message missing id");
   }
@@ -499,30 +676,70 @@ async function copyMessage(client: Awaited<ReturnType<typeof createTelegramClien
     throw new Error("Message is protected by Telegram no-forward restrictions");
   }
 
+  const sourceMessageId = message.id;
   const caption = message.message ?? "";
   if (!message.media) {
+    reportCopyPhase(onPhase, { phase: "send_text", sourceMessageId });
     const result = await client.sendMessage(job.target_channel_ref, {
       message: caption,
       formattingEntities: message.entities,
     });
+    reportCopyPhase(onPhase, { phase: "sent_text", sourceMessageId });
     return result.id ?? null;
   }
-
-  const downloaded = await client.downloadMedia(message.media, {});
-  if (!Buffer.isBuffer(downloaded) || downloaded.length === 0) {
-    throw new Error(`Failed to download media from message ${message.id}`);
+  if (!(message instanceof Api.Message)) {
+    throw new Error("Copy media requires a full Telegram message");
   }
 
-  const upload = buildCopiedMediaUpload(message, downloaded);
-  const result = await client.sendFile(job.target_channel_ref, {
-    file: upload.file,
-    caption,
-    formattingEntities: message.entities,
-    attributes: upload.attributes,
-    supportsStreaming: upload.supportsStreaming,
-  });
+  const tempDirectory = await createCopyTempDirectory(job.id, sourceMessageId);
+  const mediaFilename = buildCopiedMediaFilename(message);
+  const tempFilePath = path.join(tempDirectory, mediaFilename);
+  assertPathInsideDirectory(tempFilePath, tempDirectory);
 
-  return result.id ?? null;
+  try {
+    const reportDownloadProgress = createCopyProgressReporter(onPhase, sourceMessageId);
+    reportCopyPhase(onPhase, { phase: "download_start", sourceMessageId });
+    const downloaded = await client.downloadMedia(message, {
+      outputFile: tempFilePath,
+      progressCallback: (downloadedBytes, totalBytes) => {
+        reportDownloadProgress({
+          phase: "download_progress",
+          downloadedBytes: downloadedBytes.toString(),
+          totalBytes: totalBytes.toString(),
+        });
+      },
+    });
+    if (typeof downloaded !== "string" || path.resolve(downloaded) !== path.resolve(tempFilePath)) {
+      throw new Error(`Failed to download media from message ${sourceMessageId}`);
+    }
+
+    const mediaSize = (await stat(tempFilePath)).size;
+    if (mediaSize === 0) {
+      throw new Error(`Failed to download media from message ${sourceMessageId}`);
+    }
+
+    reportCopyPhase(onPhase, { phase: "download_complete", sourceMessageId, mediaBytes: mediaSize });
+    const upload = buildCopiedMediaUpload(message, tempFilePath, mediaSize, mediaFilename);
+    const reportUploadProgress = createCopyProgressReporter(onPhase, sourceMessageId, mediaSize);
+
+    reportCopyPhase(onPhase, { phase: "upload_start", sourceMessageId, mediaBytes: mediaSize });
+    const result = await client.sendFile(job.target_channel_ref, {
+      file: upload.file,
+      caption,
+      formattingEntities: message.entities,
+      attributes: upload.attributes,
+      supportsStreaming: upload.supportsStreaming,
+      workers: 1,
+      progressCallback: (progress) => {
+        reportUploadProgress({ phase: "upload_progress", progress });
+      },
+    });
+    reportCopyPhase(onPhase, { phase: "sent_media", sourceMessageId, mediaBytes: mediaSize });
+
+    return result.id ?? null;
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
 }
 
 export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat: () => void) {
@@ -597,27 +814,53 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         }
 
         const mediaFilter = parseAllowedMediaTypes(currentJob.allowed_media_types);
-        const filteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
-        filteredMessages.skipped.forEach((message) => {
-          if (!message.id) {
-            return;
+        const mediaFilteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
+        const textFilter = parseMessageTextFilter(currentJob);
+        const textFilteredMessages = filterMessagesByTextFilter(mediaFilteredMessages.allowed, textFilter);
+        const filterSkippedMessages = [
+          ...mediaFilteredMessages.skipped.map((message) => ({ message, reason: "Skipped by media type filter" })),
+          ...textFilteredMessages.skipped.map((message) => ({ message, reason: "Skipped by text filter" })),
+        ];
+        const skippedByFilters = filterSkippedMessages.length;
+        messagesToForward = textFilteredMessages.allowed;
+
+        if (job.mode === "copy") {
+          const currentMessageWasFiltered = filterSkippedMessages.find(({ message }) => message.id === messageId);
+          if (currentMessageWasFiltered?.message.id) {
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId: currentMessageWasFiltered.message.id,
+              mediaGroupId: getGroupedIdKey(currentMessageWasFiltered.message),
+              status: "skipped",
+              errorReason: currentMessageWasFiltered.reason,
+            });
+            jobRepository.recordProgress(job.id, {
+              nextMessageId: messageIds[index + 1] ?? null,
+              skippedIncrement: 1,
+            });
+            continue;
           }
-          transferRecordRepository.upsert({
-            jobId: job.id,
-            sourceMessageId: message.id,
-            mediaGroupId: getGroupedIdKey(message),
-            status: "skipped",
-            errorReason: "Skipped by media type filter",
+        } else {
+          filterSkippedMessages.forEach(({ message, reason }) => {
+            if (!message.id) {
+              return;
+            }
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId: message.id,
+              mediaGroupId: getGroupedIdKey(message),
+              status: "skipped",
+              errorReason: reason,
+            });
           });
-        });
-        if (filteredMessages.allowed.length === 0) {
-          jobRepository.recordProgress(job.id, {
-            nextMessageId: messageIds[index + 1] ?? null,
-            skippedIncrement: filteredMessages.skipped.length,
-          });
-          continue;
+          if (messagesToForward.length === 0) {
+            jobRepository.recordProgress(job.id, {
+              nextMessageId: messageIds[index + 1] ?? null,
+              skippedIncrement: skippedByFilters,
+            });
+            continue;
+          }
         }
-        messagesToForward = filteredMessages.allowed;
 
         if (job.mode === "forward") {
           const forwardResult = await forwardMessages(client, job, messagesToForward);
@@ -645,7 +888,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           jobRepository.recordProgress(job.id, {
             nextMessageId: messageIds[index + 1] ?? null,
             succeededIncrement: forwardResult.sent.length,
-            skippedIncrement: filteredMessages.skipped.length + forwardResult.skipped.length,
+            skippedIncrement: skippedByFilters + forwardResult.skipped.length,
           });
         } else {
           const messageToCopy = messagesToForward.find(
@@ -654,7 +897,6 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           if (!messageToCopy) {
             jobRepository.recordProgress(job.id, {
               nextMessageId: messageIds[index + 1] ?? null,
-              skippedIncrement: filteredMessages.skipped.length,
             });
             continue;
           }
@@ -672,7 +914,14 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             });
           });
 
-          const targetMessageId = await copyMessage(client, job, messageToCopy);
+          const targetMessageId = await copyMessage(client, job, messageToCopy, (details) => {
+            onHeartbeat();
+            workerRepository.heartbeat(workerId, "running", job.id, {
+              ...details,
+              updatedAt: nowIso(),
+              pid: process.pid,
+            });
+          });
           transferRecordRepository.upsert({
             jobId: job.id,
             sourceMessageId: messageToCopy.id,
@@ -683,7 +932,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           jobRepository.recordProgress(job.id, {
             nextMessageId: messageIds[index + 1] ?? null,
             succeededIncrement: 1,
-            skippedIncrement: filteredMessages.skipped.length + skippedCopyAlbumMessages.length,
+            skippedIncrement: skippedCopyAlbumMessages.length,
           });
         }
       } catch (error) {
