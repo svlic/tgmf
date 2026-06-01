@@ -31,6 +31,10 @@ export type JobInput = {
   mode: SyncJobRow["mode"];
   albumStrategy: SyncJobRow["album_strategy"];
   allowedMediaTypes?: AllowedMediaType[];
+  keywordWhitelist?: string[];
+  keywordBlacklist?: string[];
+  regexWhitelist?: string[];
+  regexBlacklist?: string[];
   delaySeconds?: number;
 };
 
@@ -264,11 +268,13 @@ export const jobRepository = {
     db().prepare(
       `INSERT INTO sync_jobs (
         id, account_id, source_channel_ref, target_channel_ref, start_message_id, end_message_id,
-        job_order, mode, album_strategy, allowed_media_types, delay_seconds, status, total_messages,
-        processed_messages, succeeded_messages, skipped_messages, failed_messages, next_message_id,
-        worker_id, last_error_code, last_error_message, cancel_requested_at, started_at, finished_at,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
+        job_order, mode, album_strategy, allowed_media_types, keyword_whitelist, keyword_blacklist,
+        regex_whitelist, regex_blacklist, delay_seconds, status, total_messages, processed_messages,
+        succeeded_messages, skipped_messages, failed_messages, next_message_id, worker_id,
+        last_error_code, last_error_message, cancel_requested_at, started_at, finished_at, created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
+
     ).run(
       id,
       input.accountId,
@@ -280,6 +286,10 @@ export const jobRepository = {
       input.mode,
       input.albumStrategy,
       JSON.stringify(input.allowedMediaTypes ?? []),
+      JSON.stringify(input.keywordWhitelist ?? []),
+      JSON.stringify(input.keywordBlacklist ?? []),
+      JSON.stringify(input.regexWhitelist ?? []),
+      JSON.stringify(input.regexBlacklist ?? []),
       input.delaySeconds ?? DEFAULT_DELAY_SECONDS,
       totalMessages,
       nextMessageId,

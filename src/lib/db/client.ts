@@ -31,6 +31,10 @@ function ensureColumn(db: Database.Database, tableName: string, columnName: stri
 
 function runCompatibilityMigrations(db: Database.Database) {
   ensureColumn(db, "sync_jobs", "allowed_media_types", "allowed_media_types TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(db, "sync_jobs", "keyword_whitelist", "keyword_whitelist TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(db, "sync_jobs", "keyword_blacklist", "keyword_blacklist TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(db, "sync_jobs", "regex_whitelist", "regex_whitelist TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(db, "sync_jobs", "regex_blacklist", "regex_blacklist TEXT NOT NULL DEFAULT '[]'");
 }
 
 export function getDb() {

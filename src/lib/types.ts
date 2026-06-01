@@ -66,6 +66,10 @@ export type SyncJobRow = {
   mode: JobMode;
   album_strategy: AlbumStrategy;
   allowed_media_types: string;
+  keyword_whitelist: string;
+  keyword_blacklist: string;
+  regex_whitelist: string;
+  regex_blacklist: string;
   delay_seconds: number;
   status: JobStatus;
   total_messages: number;
