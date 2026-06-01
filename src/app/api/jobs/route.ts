@@ -25,6 +25,10 @@ export async function POST(request: Request) {
         mode: payload.mode,
         albumStrategy: payload.albumStrategy,
         allowedMediaTypes: payload.allowedMediaTypes,
+        keywordWhitelist: payload.keywordWhitelist,
+        keywordBlacklist: payload.keywordBlacklist,
+        regexWhitelist: payload.regexWhitelist,
+        regexBlacklist: payload.regexBlacklist,
         delaySeconds: payload.delaySeconds,
       }),
     );

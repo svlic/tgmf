@@ -25,6 +25,26 @@ export const verifyPasswordSchema = z.object({
   password: z.string().min(1).max(255),
 });
 
+const MAX_FILTER_ITEMS = 50;
+
+function hasNestedQuantifier(pattern: string) {
+  return /\([^)]*[+*][^)]*\)\s*(?:[+*]|\{\d*,?\d*\})/.test(pattern);
+}
+
+function isSafeRegexFilter(pattern: string) {
+  try {
+    new RegExp(pattern, "i");
+    return !hasNestedQuantifier(pattern);
+  } catch {
+    return false;
+  }
+}
+
+const filterListSchema = z.array(z.string().trim().min(1).max(500)).max(MAX_FILTER_ITEMS).default([]);
+const regexFilterListSchema = filterListSchema.refine((patterns) => patterns.every(isSafeRegexFilter), {
+  message: "Every regex filter must be valid and avoid nested quantifiers",
+});
+
 export const jobSchema = z
   .object({
     accountId: z.string().min(1),
@@ -36,6 +56,10 @@ export const jobSchema = z
     mode: z.enum(["forward", "copy"]),
     albumStrategy: z.enum(["full_group", "captioned_only"]),
     allowedMediaTypes: z.array(z.enum(ALLOWED_MEDIA_TYPES)).default([]),
+    keywordWhitelist: filterListSchema,
+    keywordBlacklist: filterListSchema,
+    regexWhitelist: regexFilterListSchema,
+    regexBlacklist: regexFilterListSchema,
     delaySeconds: z.coerce.number().int().min(0).max(600).default(DEFAULT_DELAY_SECONDS),
   })
   .refine((value) => value.startMessageId <= value.endMessageId, {
