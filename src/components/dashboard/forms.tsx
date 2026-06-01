@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "@/components/ui/field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +31,13 @@ type JsonResult<TData = unknown> =
 
 function createClientAttemptId() {
   return globalThis.crypto?.randomUUID?.() ?? `login-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function parseFilterLines(value: FormDataEntryValue | null) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 }
 
 async function submitJson<TData = unknown>(url: string, body: unknown, method = "POST"): Promise<JsonResult<TData>> {
@@ -237,6 +245,10 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
           albumStrategy: String(formData.get("albumStrategy") || "full_group"),
           delaySeconds: Number(formData.get("delaySeconds") || 2),
           allowedMediaTypes: formData.getAll("allowedMediaTypes").map(String),
+          keywordWhitelist: parseFilterLines(formData.get("keywordWhitelist")),
+          keywordBlacklist: parseFilterLines(formData.get("keywordBlacklist")),
+          regexWhitelist: parseFilterLines(formData.get("regexWhitelist")),
+          regexBlacklist: parseFilterLines(formData.get("regexBlacklist")),
         };
         const result = await submitJson<{ job: SyncJobRow | null }>("/api/jobs", payload);
         if (!result.ok) {
@@ -319,6 +331,28 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
           </div>
           <FieldDescription>Leave all media types unchecked to allow every supported type with no filtering.</FieldDescription>
         </Field>
+        <div className="md:col-span-2 grid gap-5 lg:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="keywordWhitelist">Keyword whitelist</FieldLabel>
+            <Textarea id="keywordWhitelist" name="keywordWhitelist" placeholder="One keyword per line" />
+            <FieldDescription>If set, a message must contain at least one keyword or whitelist regex to be transferred.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="keywordBlacklist">Keyword blacklist</FieldLabel>
+            <Textarea id="keywordBlacklist" name="keywordBlacklist" placeholder="One keyword per line" />
+            <FieldDescription>Messages containing any blacklist keyword are skipped before whitelist checks.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="regexWhitelist">Regex whitelist</FieldLabel>
+            <Textarea id="regexWhitelist" name="regexWhitelist" placeholder="One regular expression per line" />
+            <FieldDescription>Regular expressions are matched against message text and captions.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="regexBlacklist">Regex blacklist</FieldLabel>
+            <Textarea id="regexBlacklist" name="regexBlacklist" placeholder="One regular expression per line" />
+            <FieldDescription>Blacklist regex matches take priority over whitelist matches.</FieldDescription>
+          </Field>
+        </div>
         <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
           <Button type="submit" disabled={!hasAccounts}>Create job</Button>
           <FormFeedback state={state} />
