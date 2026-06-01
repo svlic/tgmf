@@ -1,6 +1,13 @@
 import { StringSession } from "telegram/sessions";
 import { TelegramClient } from "telegram";
+import { LogLevel } from "telegram/extensions/Logger";
 import { accountRepository } from "@/lib/db/repositories";
+
+const TELEGRAM_LOG_PREFIX = "[telegram]";
+
+function isGramJsUpdateTimeout(error: Error) {
+  return error.message === "TIMEOUT";
+}
 
 export async function createTelegramClient(accountId: string, sessionOverride?: string) {
   const account = accountRepository.getById(accountId);
@@ -14,6 +21,20 @@ export async function createTelegramClient(accountId: string, sessionOverride?: 
   const client = new TelegramClient(session, apiId, apiHash, {
     connectionRetries: 5,
   });
+
+  client.onError = async (error) => {
+    if (isGramJsUpdateTimeout(error)) {
+      return;
+    }
+
+    console.warn(TELEGRAM_LOG_PREFIX, "Client background error", {
+      accountId,
+      errorName: error.name,
+      errorMessage: error.message,
+    });
+  };
+  // GramJS logs background update-loop errors after calling onError; keep logging centralized above.
+  client.setLogLevel(LogLevel.NONE);
 
   return { account, client, session };
 }
