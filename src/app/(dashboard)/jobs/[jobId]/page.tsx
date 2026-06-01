@@ -51,6 +51,39 @@ function parseAllowedMediaTypes(value: string): AllowedMediaType[] {
   }
 }
 
+function parseStringList(value: string) {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function FilterList({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {values.length === 0 ? (
+          <span className="text-sm leading-6 text-muted-foreground">None</span>
+        ) : (
+          values.map((value) => (
+            <Badge key={value} variant="blue">{value}</Badge>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function statusVariant(status: string) {
   if (["completed"].includes(status)) {
     return "green" as const;
@@ -77,6 +110,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
   const records = transferRecordRepository.listForJob(jobId);
   const allowedMediaTypes = parseAllowedMediaTypes(job.allowed_media_types);
+  const keywordWhitelist = parseStringList(job.keyword_whitelist);
+  const keywordBlacklist = parseStringList(job.keyword_blacklist);
+  const regexWhitelist = parseStringList(job.regex_whitelist);
+  const regexBlacklist = parseStringList(job.regex_blacklist);
   const progressPercent = job.total_messages > 0 ? Math.min(100, Math.round((job.processed_messages / job.total_messages) * 100)) : 0;
   const shouldRefreshProgress = ["pending", "running"].includes(job.status);
 
@@ -159,6 +196,20 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last error</p>
                 <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">{job.last_error_message || "No error recorded."}</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+                <FilterList label="Keyword whitelist" values={keywordWhitelist} />
+              </div>
+              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+                <FilterList label="Keyword blacklist" values={keywordBlacklist} />
+              </div>
+              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+                <FilterList label="Regex whitelist" values={regexWhitelist} />
+              </div>
+              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+                <FilterList label="Regex blacklist" values={regexBlacklist} />
               </div>
             </div>
           </div>
