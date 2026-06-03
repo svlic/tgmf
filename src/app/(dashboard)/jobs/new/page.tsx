@@ -9,13 +9,24 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { JobCreateForm } from "@/components/dashboard/forms";
-import { accountRepository } from "@/lib/db/repositories";
+import { accountRepository, dialogRepository } from "@/lib/db/repositories";
 
 export default function NewJobPage() {
   const accounts = accountRepository.list();
   const readyAccounts = accounts
     .filter((account) => account.login_state === "ready")
-    .map((account) => ({ id: account.id, label: account.label }));
+    .map((account) => ({
+      id: account.id,
+      label: account.label,
+      phoneNumber: account.phone_number,
+      dialogs: dialogRepository.listForAccount(account.id).map((dialog) => ({
+        peerId: dialog.peer_id,
+        title: dialog.title,
+        username: dialog.username,
+        entityType: dialog.entity_type,
+        isPublic: Boolean(dialog.is_public),
+      })),
+    }));
 
   return (
     <div className="space-y-6">

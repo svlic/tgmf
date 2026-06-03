@@ -218,9 +218,28 @@ export function AccountCreateForm() {
   );
 }
 
-export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; label: string }> }) {
+type JobAccountOption = {
+  id: string;
+  label: string;
+  phoneNumber: string;
+  dialogs: Array<{
+    peerId: string;
+    title: string;
+    username: string | null;
+    entityType: string;
+    isPublic: boolean;
+  }>;
+};
+
+function getDialogRef(dialog: JobAccountOption["dialogs"][number]) {
+  return dialog.username ? `@${dialog.username}` : dialog.peerId;
+}
+
+export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
   const [state, setState] = useState<FormState>({ error: null, success: null });
+  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id ?? "");
   const hasAccounts = accounts.length > 0;
+  const selectedAccount = accounts.find((account) => account.id === selectedAccountId) ?? accounts[0] ?? null;
 
   return (
     <form
@@ -235,7 +254,7 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
         }
         const formData = new FormData(event.currentTarget);
         const payload = {
-          accountId: String(formData.get("accountId") || ""),
+          accountId: selectedAccountId,
           sourceChannelRef: String(formData.get("sourceChannelRef") || ""),
           targetChannelRef: String(formData.get("targetChannelRef") || ""),
           startMessageId: Number(formData.get("startMessageId") || 0),
@@ -267,15 +286,23 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
     >
       <fieldset className="contents" disabled={!hasAccounts} aria-disabled={!hasAccounts}>
         <Field>
-          <FieldLabel htmlFor="accountId">Account</FieldLabel>
-          <Select id="accountId" name="accountId" required>
-            <option value="">Select account</option>
+          <FieldLabel htmlFor="accountId">Telegram account</FieldLabel>
+          <Select
+            id="accountId"
+            name="accountId"
+            value={selectedAccountId}
+            onChange={(event) => setSelectedAccountId(event.target.value)}
+            required
+          >
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.label}
+                {account.label} · {account.phoneNumber} · {account.dialogs.length} dialogs
               </option>
             ))}
           </Select>
+          <FieldDescription>
+            Source and target suggestions below come from cached dialogs for the selected account. You can still type a username, peer ID, or invite ref manually.
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="mode">Transfer mode</FieldLabel>
@@ -286,11 +313,19 @@ export function JobCreateForm({ accounts }: { accounts: Array<{ id: string; labe
         </Field>
         <Field>
           <FieldLabel htmlFor="sourceChannelRef">Source channel</FieldLabel>
-          <Input id="sourceChannelRef" name="sourceChannelRef" placeholder="username, peer ID, or invite ref" required />
+          <Input id="sourceChannelRef" name="sourceChannelRef" list="selected-account-dialogs" placeholder="username, peer ID, or invite ref" required />
+          <FieldDescription>
+            {selectedAccount ? `${selectedAccount.dialogs.length} cached dialogs available for ${selectedAccount.label}.` : "Select an account to use cached dialog suggestions."}
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="targetChannelRef">Target channel</FieldLabel>
-          <Input id="targetChannelRef" name="targetChannelRef" placeholder="username, peer ID, or invite ref" required />
+          <Input id="targetChannelRef" name="targetChannelRef" list="selected-account-dialogs" placeholder="username, peer ID, or invite ref" required />
+          <datalist id="selected-account-dialogs">
+            {selectedAccount?.dialogs.map((dialog) => (
+              <option key={`${dialog.peerId}-${dialog.title}`} value={getDialogRef(dialog)} label={`${dialog.title} · ${dialog.entityType}${dialog.isPublic ? " · public" : " · private"}`} />
+            ))}
+          </datalist>
         </Field>
         <Field>
           <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>

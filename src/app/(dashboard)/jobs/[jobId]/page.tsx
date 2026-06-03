@@ -9,7 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { JobActionButtons } from "@/components/dashboard/forms";
 import { JobProgressRefresh } from "@/components/dashboard/job-progress-refresh";
-import { jobRepository, transferRecordRepository } from "@/lib/db/repositories";
+import { accountRepository, jobRepository, transferRecordRepository } from "@/lib/db/repositories";
 import {
   DataTable,
   DataTableBody,
@@ -108,6 +108,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
     notFound();
   }
 
+  const account = accountRepository.getById(job.account_id);
   const records = transferRecordRepository.listForJob(jobId);
   const allowedMediaTypes = parseAllowedMediaTypes(job.allowed_media_types);
   const keywordWhitelist = parseStringList(job.keyword_whitelist);
@@ -178,8 +179,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             <JobActionButtons jobId={job.id} status={job.status} />
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Account ID</p>
-                <p className="mt-2 truncate font-mono text-xs font-medium text-foreground" title={job.account_id}>{job.account_id}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Telegram account</p>
+                <p className="mt-2 font-medium text-foreground">{account?.label ?? "Deleted account"}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{account?.phone_number ?? "Account record is no longer available."}</p>
+                <p className="mt-2 truncate font-mono text-xs text-muted-foreground" title={job.account_id}>{job.account_id}</p>
               </div>
               <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Media filter</p>
