@@ -28,16 +28,16 @@ export function DashboardNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "group rounded-[var(--radius)] border border-transparent bg-transparent px-3.5 py-2.5 transition duration-200 hover:border-primary/15 hover:bg-white/70 hover:shadow-[0_18px_38px_-30px_color-mix(in_oklab,var(--primary)_40%,transparent)]",
-              active && "border-primary/20 bg-primary/10 shadow-[0_18px_38px_-30px_color-mix(in_oklab,var(--primary)_50%,transparent),inset_0_1px_0_rgba(255,255,255,0.75)]",
+              "group rounded-[var(--radius)] border border-transparent bg-transparent px-3.5 py-2.5 transition duration-200 hover:border-primary/12 hover:bg-white/55 hover:shadow-[0_14px_30px_-26px_color-mix(in_oklab,var(--primary)_28%,transparent)]",
+              active && "border-primary/18 bg-primary/9 shadow-[0_16px_34px_-28px_color-mix(in_oklab,var(--primary)_42%,transparent),inset_0_1px_0_rgba(255,255,255,0.75)]",
             )}
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 <p className={cn("font-medium text-foreground transition group-hover:text-primary", active && "text-primary")}>{item.label}</p>
-                <p className="text-sm leading-5 text-muted-foreground">{item.description}</p>
+                <p className="text-sm leading-5 text-muted-foreground/90">{item.description}</p>
               </div>
-              <span className={cn("mt-0.5 inline-flex min-w-4 justify-end text-xs text-muted-foreground transition group-hover:text-primary", active && "text-primary")}>{active ? "●" : "→"}</span>
+              <span className={cn("mt-0.5 inline-flex min-w-4 justify-end text-[11px] text-muted-foreground/80 transition group-hover:text-primary", active && "text-primary")}>{active ? "●" : "→"}</span>
             </div>
           </Link>
         );
