@@ -71,15 +71,15 @@ export default function JobsPage() {
       <JobProgressRefresh active={activeRefresh} />
 
       <Card className="border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-        <CardHeader className="gap-4">
+        <CardHeader className="gap-3">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-2">
+            <div className="max-w-2xl space-y-2">
               <div className="flex flex-wrap items-center gap-3">
                 <CardTitle>Job lifecycle management</CardTitle>
                 <Badge variant="blue">Jobs</Badge>
               </div>
-              <CardDescription>
-                Review every transfer job, monitor worker activity, and control retries, pause, resume, or cancellation from one queue.
+              <CardDescription className="max-w-xl leading-5">
+                Review transfer progress, worker activity, and recovery actions from a single operational queue.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -98,27 +98,27 @@ export default function JobsPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="grid gap-4 lg:grid-cols-[1.35fr_1fr] xl:grid-cols-[1.4fr_0.95fr]">
+          <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
             <div className="rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Total jobs</p>
               <p className="mt-2 text-2xl font-semibold text-foreground">{jobs.length}</p>
-              <p className="mt-1 text-sm text-muted-foreground">All queued, running, paused, and historical work.</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Queue and history at a glance.</p>
             </div>
             <div className="rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Active lifecycle</p>
               <p className="mt-2 text-2xl font-semibold text-foreground">{activeJobs.length}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Pending, running, claimed, or paused jobs currently need attention.</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Pending, running, claimed, or paused.</p>
             </div>
             <div className="rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Completed</p>
               <p className="mt-2 text-2xl font-semibold text-foreground">{completedJobs.length}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Successfully finished transfer runs.</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Finished transfer runs.</p>
             </div>
             <div className="rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Failed</p>
               <p className="mt-2 text-2xl font-semibold text-foreground">{failedJobs.length}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Jobs that may need resume or retry-failed actions.</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Needs resume or retry attention.</p>
             </div>
           </div>
 
@@ -167,22 +167,23 @@ export default function JobsPage() {
           </Link>
         </EmptyState>
       ) : (
-        <div className="grid gap-5">
+          <div className="grid gap-4.5">
+
           {jobs.map((job) => {
             const account = accountRepository.getById(job.account_id);
             const progressPercent = getProgressPercent(job.processed_messages, job.total_messages);
 
             return (
               <Card key={job.id} className="border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-                <CardHeader className="gap-4">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-2">
+                <CardHeader className="gap-3">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="max-w-3xl space-y-2">
                       <div className="flex flex-wrap items-center gap-3">
                         <CardTitle className="text-base sm:text-lg">{job.source_channel_ref} → {job.target_channel_ref}</CardTitle>
                         <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
                         <Badge variant="slate">{job.mode}</Badge>
                       </div>
-                      <CardDescription>
+                      <CardDescription className="leading-5">
                         Account: {account?.label ?? "Deleted account"} · Range {job.start_message_id} - {job.end_message_id} · {job.job_order} order
                       </CardDescription>
                     </div>
@@ -196,13 +197,13 @@ export default function JobsPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 lg:grid-cols-[1.35fr_0.95fr]">
                     <div className="rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium text-foreground">Progress</p>
-                          <p className="text-sm leading-6 text-muted-foreground">Processed {job.processed_messages} of {job.total_messages} messages.</p>
+                          <p className="text-sm leading-5 text-muted-foreground">Processed {job.processed_messages} of {job.total_messages} messages.</p>
                         </div>
                         <span className="text-sm font-semibold text-primary">{progressPercent}%</span>
                       </div>
@@ -248,7 +249,7 @@ export default function JobsPage() {
                       </div>
                       <div className="mt-4">
                         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last error</p>
-                        <p className="mt-1 break-words leading-6">{job.last_error_message || "No error recorded."}</p>
+                        <p className="mt-1 break-words leading-5">{job.last_error_message || "No error recorded."}</p>
                       </div>
                     </div>
                   </div>
