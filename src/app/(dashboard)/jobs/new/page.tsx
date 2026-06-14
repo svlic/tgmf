@@ -36,18 +36,27 @@ export default function NewJobPage() {
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
                 <CardTitle>Create transfer job</CardTitle>
-                <Badge variant="blue">New job</Badge>
+                <Badge variant="blue">Create</Badge>
               </div>
               <CardDescription>
                 Queue a Telegram message transfer by choosing a logged-in account, source and target channels, and a message ID range.
               </CardDescription>
             </div>
-            <Link
-              href="/accounts"
-              className="inline-flex h-10 items-center justify-center rounded-[calc(var(--radius)-0.125rem)] border border-border/80 bg-white/75 px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm shadow-black/5 backdrop-blur transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/20 hover:bg-white hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              Manage accounts
-            </Link>
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href="/jobs"
+                  className="inline-flex h-10 items-center justify-center rounded-[calc(var(--radius)-0.125rem)] border border-border/80 bg-white/75 px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm shadow-black/5 backdrop-blur transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/20 hover:bg-white hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  View all jobs
+                </Link>
+                <Link
+                  href="/accounts"
+                  className="inline-flex h-10 items-center justify-center rounded-[calc(var(--radius)-0.125rem)] border border-border/80 bg-white/75 px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm shadow-black/5 backdrop-blur transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/20 hover:bg-white hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  Manage accounts
+                </Link>
+              </div>
+
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
