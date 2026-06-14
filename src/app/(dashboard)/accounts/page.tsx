@@ -7,16 +7,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AccountActionButtons, AccountCreateForm } from "@/components/dashboard/forms";
-import { accountRepository, dialogRepository } from "@/lib/db/repositories";
+import { accountRepository } from "@/lib/db/repositories";
 import { redactSecret } from "@/lib/utils";
-import {
-  DataTable,
-  DataTableBody,
-  DataTableCell,
-  DataTableHead,
-  DataTableHeader,
-  DataTableRow,
-} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 
 function loginStateVariant(status: string) {
@@ -56,7 +48,6 @@ export default function AccountsPage() {
       ) : null}
 
       {accounts.map((account) => {
-        const dialogs = dialogRepository.listForAccount(account.id);
         return (
           <Card key={account.id} className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
             <CardHeader className="gap-4">
@@ -93,53 +84,10 @@ export default function AccountsPage() {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-foreground">Account actions</p>
-                    <p className="text-sm leading-6 text-muted-foreground">Drive the login flow and refresh cached dialogs for this account.</p>
+                    <p className="text-sm leading-6 text-muted-foreground">Drive the login flow, verify readiness, and refresh dialogs for future job configuration.</p>
                   </div>
                 </div>
                 <AccountActionButtons accountId={account.id} />
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Cached dialogs</h3>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">Dialogs discovered from the most recent refresh for this account.</p>
-                  </div>
-                  <Badge variant="slate">{dialogs.length} cached</Badge>
-                </div>
-                {dialogs.length === 0 ? (
-                  <EmptyState
-                    title="No dialogs cached yet"
-                    description="Use Refresh dialogs after the account is authenticated to pull channel and chat metadata into the dashboard."
-                  >
-                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Authenticate this account, then refresh dialogs from Account actions.</p>
-                  </EmptyState>
-                ) : (
-                  <DataTable>
-                    <DataTableHead>
-                      <DataTableRow>
-                        <DataTableHeader>Title</DataTableHeader>
-                        <DataTableHeader>Peer ID</DataTableHeader>
-                        <DataTableHeader>Type</DataTableHeader>
-                        <DataTableHeader>Visibility</DataTableHeader>
-                      </DataTableRow>
-                    </DataTableHead>
-                    <DataTableBody>
-                      {dialogs.map((dialog) => (
-                        <DataTableRow key={dialog.id}>
-                          <DataTableCell className="max-w-[18rem] truncate font-medium text-foreground" title={dialog.title}>{dialog.title}</DataTableCell>
-                          <DataTableCell className="whitespace-nowrap">
-                            <code className="rounded-md border border-border/70 bg-muted/70 px-2 py-1 text-xs text-foreground/80">{dialog.peer_id}</code>
-                          </DataTableCell>
-                          <DataTableCell className="whitespace-nowrap">{dialog.entity_type}</DataTableCell>
-                          <DataTableCell>
-                            <Badge variant={dialog.is_public ? "green" : "amber"}>{dialog.is_public ? "public" : "private"}</Badge>
-                          </DataTableCell>
-                        </DataTableRow>
-                      ))}
-                    </DataTableBody>
-                  </DataTable>
-                )}
               </div>
             </CardContent>
           </Card>
