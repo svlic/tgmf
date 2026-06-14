@@ -5,7 +5,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        "surface-glass surface-panel overflow-hidden rounded-[var(--radius-xl)] border border-border/70 text-card-foreground shadow-[0_24px_70px_-34px_color-mix(in_oklab,var(--foreground)_20%,transparent)]",
+        "surface-glass surface-panel overflow-hidden rounded-[var(--radius-xl)] border border-border/65 text-card-foreground shadow-[0_22px_60px_-34px_color-mix(in_oklab,var(--foreground)_17%,transparent)]",
         className,
       )}
       {...props}
