@@ -744,6 +744,8 @@ async function copyMessage(
 
 export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat: () => void) {
   const { client } = await createTelegramClient(job.account_id);
+  let delayBeforeNextAttempt = false;
+
   try {
     await client.connect();
     const messageIds = buildMessageSequence(job);
@@ -766,6 +768,11 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
       const messageId = messageIds[index];
       onHeartbeat();
+
+      if (delayBeforeNextAttempt && job.delay_seconds > 0) {
+        await sleep(job.delay_seconds * 1000);
+      }
+      delayBeforeNextAttempt = false;
 
       try {
         const alreadyTransferred = transferRecordRepository.getByJobAndSourceMessageId(job.id, messageId);
@@ -864,6 +871,9 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
         if (job.mode === "forward") {
           const forwardResult = await forwardMessages(client, job, messagesToForward);
+          if (forwardResult.sent.some(({ targetMessageId }) => targetMessageId !== null)) {
+            delayBeforeNextAttempt = true;
+          }
           forwardResult.sent.forEach(({ sourceMessage, targetMessageId }) => {
             transferRecordRepository.upsert({
               jobId: job.id,
@@ -922,6 +932,9 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               pid: process.pid,
             });
           });
+          if (targetMessageId !== null) {
+            delayBeforeNextAttempt = true;
+          }
           transferRecordRepository.upsert({
             jobId: job.id,
             sourceMessageId: messageToCopy.id,
@@ -950,8 +963,6 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           lastErrorMessage: errorMessage,
         });
       }
-
-      await sleep(job.delay_seconds * 1000);
     }
 
     jobRepository.setStatus(job.id, "completed", {
