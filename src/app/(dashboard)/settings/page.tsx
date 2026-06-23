@@ -58,13 +58,13 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {settings.map((setting) => (
-            <div key={setting.label} className="surface-glass surface-panel rounded-(--radius-xl) border border-border/70 p-5 shadow-[0_22px_46px_-30px_color-mix(in_oklab,var(--foreground)_16%,transparent)]">
+            <div key={setting.label} className="surface-glass surface-panel rounded-lg border border-border/70 p-4 shadow-[0_22px_46px_-30px_color-mix(in_oklab,var(--foreground)_16%,transparent)]">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-foreground">{setting.label}</p>
                 <Badge variant={setting.configured ? "green" : "red"}>{setting.configured ? "configured" : "missing"}</Badge>
               </div>
-              <p className="mt-3 text-sm font-medium text-foreground/80">{setting.value}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{setting.description}</p>
+              <p className="mt-2 text-sm font-semibold text-foreground/80 font-mono break-all">{setting.value}</p>
+              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{setting.description}</p>
             </div>
           ))}
         </CardContent>

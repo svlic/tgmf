@@ -19,21 +19,19 @@ export default async function LoginPage() {
 
   console.info("[admin-login] login page rendered", { authenticated: false });
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-6 py-12">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_color-mix(in_oklab,var(--primary)_18%,transparent),_transparent_36%),radial-gradient(circle_at_bottom_right,_color-mix(in_oklab,var(--accent)_40%,transparent),_transparent_28%)]" />
-      <div className="grid-noise pointer-events-none absolute inset-0 opacity-70" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-12">
       <div className="relative w-full max-w-md">
-        <Card className="surface-glass surface-panel overflow-hidden border-border/70 bg-card/88 shadow-[0_34px_90px_-42px_color-mix(in_oklab,var(--foreground)_30%,transparent)] backdrop-blur-xl">
-          <CardHeader className="gap-4 border-b border-border/60">
+        <Card className="overflow-hidden border-border/70 shadow-[0_34px_90px_-42px_color-mix(in_oklab,var(--foreground)_30%,transparent)]">
+          <CardHeader className="gap-3 pb-3">
             <Badge variant="blue" className="w-fit">Secure access</Badge>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <CardTitle className="text-2xl text-balance text-foreground">Admin login</CardTitle>
               <CardDescription className="leading-6 text-muted-foreground">
                 Sign in with the admin login password configured in the server environment to manage Telegram accounts and sync jobs.
               </CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="pt-6">
+          <CardContent className="pt-4">
             <LoginForm />
           </CardContent>
         </Card>
