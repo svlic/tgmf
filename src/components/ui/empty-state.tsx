@@ -17,7 +17,7 @@ export function EmptyState({
       <div className="mx-auto max-w-md space-y-2">
         <p className="text-base font-semibold text-foreground">{title}</p>
         <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-        {children ? <div className="pt-2">{children}</div> : null}
+        {children ? <div className="pt-4">{children}</div> : null}
       </div>
     </div>
   );

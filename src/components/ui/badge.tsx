@@ -9,7 +9,7 @@ export function Badge({ className, variant = "slate", ...props }: BadgeProps) {
   return (
     <span
       className={cn(
-        "status-pill inline-flex items-center rounded-full border px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]",
+        "status-pill inline-flex items-center rounded-full border px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.08em]",
         variant === "slate" && "border-border bg-secondary/85 text-secondary-foreground",
         variant === "blue" && "border-primary/15 bg-primary/10 text-primary",
         variant === "green" && "border-emerald-300/50 bg-emerald-400/10 text-emerald-700",

@@ -12,7 +12,7 @@ export function DataTable({ className, ...props }: React.TableHTMLAttributes<HTM
 }
 
 export function DataTableHead({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("bg-secondary/70", className)} {...props} />;
+  return <thead className={cn("bg-muted/30", className)} {...props} />;
 }
 
 export function DataTableBody({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
@@ -20,14 +20,14 @@ export function DataTableBody({ className, ...props }: React.HTMLAttributes<HTML
 }
 
 export function DataTableRow({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("align-top transition-colors duration-200 hover:bg-accent/55", className)} {...props} />;
+  return <tr className={cn("align-top transition-colors duration-200 hover:bg-accent/30", className)} {...props} />;
 }
 
 export function DataTableHeader({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       className={cn(
-        "px-4 py-3.5 text-left text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground",
+        "px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground",
         className,
       )}
       {...props}
@@ -36,5 +36,5 @@ export function DataTableHeader({ className, ...props }: React.ThHTMLAttributes<
 }
 
 export function DataTableCell({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("px-4 py-4 text-sm text-muted-foreground", className)} {...props} />;
+  return <td className={cn("px-4 py-3 text-sm text-muted-foreground", className)} {...props} />;
 }
