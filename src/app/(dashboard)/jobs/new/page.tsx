@@ -31,7 +31,7 @@ export default function NewJobPage() {
   return (
     <div className="space-y-6">
       <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-        <CardHeader className="gap-4">
+        <CardHeader className="gap-4 pb-3">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">

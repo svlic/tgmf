@@ -122,7 +122,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
     <div className="space-y-6">
       <JobProgressRefresh active={shouldRefreshProgress} />
       <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-        <CardHeader className="gap-4">
+        <CardHeader className="gap-4 pb-3">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
@@ -131,30 +131,30 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
               </div>
               <CardDescription>Inspect the selected transfer job, its source/target mapping, and recovery actions.</CardDescription>
             </div>
-            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 px-4 py-3 text-sm text-muted-foreground">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Job ID</p>
-              <p className="mt-1 max-w-[18rem] truncate font-mono text-xs font-medium text-foreground" title={job.id}>{job.id}</p>
+            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 px-4 py-3 text-sm text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Job ID</p>
+              <p className="mt-1 max-w-[18rem] truncate font-mono text-xs font-semibold text-foreground" title={job.id}>{job.id}</p>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source</p>
+            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Source</p>
               <p className="mt-2 break-all font-medium text-foreground">{job.source_channel_ref}</p>
             </div>
-            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Target</p>
+            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Target</p>
               <p className="mt-2 break-all font-medium text-foreground">{job.target_channel_ref}</p>
             </div>
-            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Range</p>
+            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Range</p>
               <p className="mt-2 font-medium text-foreground">{job.start_message_id} - {job.end_message_id}</p>
               <p className="mt-1 text-sm text-muted-foreground">{job.job_order}</p>
             </div>
-            <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
+            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Progress</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Progress</p>
                 <span className="text-sm font-semibold text-primary">{progressPercent}%</span>
               </div>
               <div className="mt-3 h-2 overflow-hidden rounded-full border border-primary/10 bg-secondary/80">
@@ -168,7 +168,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             </div>
           </div>
 
-          <div className="surface-glass rounded-(--radius-xl) border border-border/70 bg-white/55 p-4">
+          <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-foreground">Recovery and control actions</p>
@@ -178,14 +178,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             </div>
             <JobActionButtons jobId={job.id} status={job.status} />
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
-              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Telegram account</p>
+              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Telegram account</p>
                 <p className="mt-2 font-medium text-foreground">{account?.label ?? "Deleted account"}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{account?.phone_number ?? "Account record is no longer available."}</p>
                 <p className="mt-2 truncate font-mono text-xs text-muted-foreground" title={job.account_id}>{job.account_id}</p>
               </div>
-              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Media filter</p>
+              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Media filter</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {allowedMediaTypes.length === 0 ? (
                     <span className="text-sm leading-6 text-muted-foreground">All supported media types</span>
@@ -196,22 +196,22 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
                   )}
                 </div>
               </div>
-              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last error</p>
+              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Last error</p>
                 <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">{job.last_error_message || "No error recorded."}</p>
               </div>
             </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
                 <FilterList label="Keyword whitelist" values={keywordWhitelist} />
               </div>
-              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
                 <FilterList label="Keyword blacklist" values={keywordBlacklist} />
               </div>
-              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
                 <FilterList label="Regex whitelist" values={regexWhitelist} />
               </div>
-              <div className="rounded-(--radius-xl) border border-border/70 bg-background/90 p-4">
+              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
                 <FilterList label="Regex blacklist" values={regexBlacklist} />
               </div>
             </div>
