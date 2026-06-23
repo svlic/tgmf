@@ -155,7 +155,9 @@ export function LoginForm() {
 export function LogoutButton() {
   return (
     <Button
-      variant="secondary"
+      variant="ghost"
+      size="sm"
+      className="w-full justify-start text-muted-foreground hover:text-foreground"
       onClick={async () => {
         await submitJson("/api/auth/logout", {});
         window.location.replace("/login");
@@ -171,7 +173,7 @@ export function AccountCreateForm() {
   const [state, setState] = useState<FormState>({ error: null, success: null });
   return (
     <form
-      className="grid gap-5 md:grid-cols-2"
+      className="grid gap-5 md:grid-cols-2 items-start"
       onSubmit={async (event) => {
         event.preventDefault();
         setState({ error: null, success: null });
@@ -210,7 +212,7 @@ export function AccountCreateForm() {
         <Input id="apiHashOverride" name="apiHashOverride" placeholder="Optional API hash override" />
         <FieldDescription>Useful when isolating one account from the default app credentials.</FieldDescription>
       </Field>
-      <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-4 pt-2">
         <Button type="submit">Add account</Button>
         <FormFeedback state={state} />
       </div>
@@ -356,7 +358,7 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
         </Field>
         <Field className="md:col-span-2">
           <FieldLabel>Allowed media types</FieldLabel>
-          <div className="grid gap-2 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/40 p-3 sm:grid-cols-2 lg:grid-cols-3">
             {ALLOWED_MEDIA_TYPES.map((mediaType) => (
               <label key={mediaType} className="flex items-center gap-2 rounded-[var(--radius)] bg-white/55 px-3 py-2 text-sm text-foreground shadow-sm shadow-black/5">
                 <input type="checkbox" name="allowedMediaTypes" value={mediaType} className="size-4 rounded border-border text-foreground accent-foreground" />
@@ -388,7 +390,7 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
             <FieldDescription>Blacklist regex matches take priority over whitelist matches.</FieldDescription>
           </Field>
         </div>
-        <div className="md:col-span-2 flex flex-col gap-3 rounded-(--radius-xl) border border-border/70 bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-4 pt-2">
           <Button type="submit" disabled={!hasAccounts}>Create job</Button>
           <FormFeedback state={state} />
         </div>
@@ -428,7 +430,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
   }
 
   return (
-    <div className="grid gap-3 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
+    <div className="grid gap-3 rounded-lg border border-border/70 bg-background/75 p-3">
       <div className="flex flex-wrap gap-2">
         <Button
           variant="secondary"
@@ -481,7 +483,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
         </Button>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <form
           className="rounded-[var(--radius)] border border-border/70 bg-white/55 p-3 shadow-sm shadow-black/5"
           onSubmit={(event) => {
@@ -597,7 +599,7 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
   }
 
   return (
-    <div className="flex flex-wrap gap-2 rounded-(--radius-xl) border border-border/70 bg-background/75 p-3">
+    <div className="flex flex-wrap gap-2 rounded-lg border border-border/70 bg-background/75 p-3">
       <Button
         variant="secondary"
         size="sm"
@@ -656,7 +658,7 @@ export function AccountActionPanel({
 }) {
   return (
     <Card className="surface-glass border-border/70 bg-white/60 shadow-[0_20px_48px_-32px_color-mix(in_oklab,var(--foreground)_16%,transparent)]">
-      <CardHeader className="gap-3 border-b-0 pb-2">
+      <CardHeader className="gap-3 pb-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-base text-foreground">{accountLabel}</CardTitle>
