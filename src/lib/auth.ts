@@ -69,10 +69,8 @@ export async function getAdminSession() {
     const session = await verifyAdminSession(token);
     logAuthEvent("admin session verified", { authenticated: session.authenticated });
     return session;
-  } catch (error) {
-    logAuthWarning("admin session verification failed", {
-      message: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch {
+    logAuthWarning("admin session verification failed");
     return null;
   }
 }
@@ -94,21 +92,21 @@ export async function assertCsrf() {
   const host = requestHeaders.get("host");
 
   if (!origin || !host) {
-    logAuthWarning("csrf rejected: missing headers", { hasOrigin: Boolean(origin), hasHost: Boolean(host) });
+    logAuthWarning("csrf rejected: missing headers");
     throw new Error("Missing CSRF headers");
   }
 
   const originUrl = new URL(origin);
   if (originUrl.host !== host) {
-    logAuthWarning("csrf rejected: origin mismatch", { originHost: originUrl.host, host });
+    logAuthWarning("csrf rejected: origin mismatch");
     throw new Error("Invalid CSRF origin");
   }
 
   const csrfHeader = requestHeaders.get(CSRF_HEADER_NAME);
   if (csrfHeader !== host) {
-    logAuthWarning("csrf rejected: token mismatch", { csrfHeader, host });
+    logAuthWarning("csrf rejected: token mismatch");
     throw new Error("Invalid CSRF token");
   }
 
-  logAuthEvent("csrf accepted", { host });
+  logAuthEvent("csrf accepted");
 }
