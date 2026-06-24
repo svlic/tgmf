@@ -335,28 +335,19 @@ export const jobRepository = {
     return this.setStatus(id, "pending", { worker_id: null, last_error_code: null, last_error_message: null });
   },
   requestCancel(id: string) {
-    return this.setStatus(id, "running", { cancel_requested_at: nowIso() });
-  },
-  retryFailed(id: string) {
     const job = this.getById(id);
     if (!job) {
       throw new Error("Job not found");
     }
 
-    db().prepare(`DELETE FROM message_transfer_records WHERE job_id = ? AND status = 'failed'`).run(id);
-    const nextMessageId = job.job_order === "asc" ? job.start_message_id : job.end_message_id;
-    return this.setStatus(id, "pending", {
-      next_message_id: nextMessageId,
-      processed_messages: 0,
-      succeeded_messages: 0,
-      skipped_messages: 0,
-      failed_messages: 0,
-      worker_id: null,
+    if (job.status === "running") {
+      return this.setStatus(id, "running", { cancel_requested_at: nowIso() });
+    }
+
+    return this.setStatus(id, "cancelled", {
+      finished_at: nowIso(),
       cancel_requested_at: null,
-      started_at: null,
-      finished_at: null,
-      last_error_code: null,
-      last_error_message: null,
+      worker_id: null,
     });
   },
   claimNext(workerId: string) {

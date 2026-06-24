@@ -630,16 +630,6 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
       >
         {pendingAction === "cancel" ? "Cancelling..." : "Cancel"}
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          void runAction("retry-failed", `/api/jobs/${jobId}/retry-failed`, "Queueing failed records...", "Failed records queued for retry");
-        }}
-        disabled={disabled}
-      >
-        {pendingAction === "retry-failed" ? "Queueing retry..." : "Retry failed"}
-      </Button>
       <ActionFeedback feedback={feedback} />
     </div>
   );
