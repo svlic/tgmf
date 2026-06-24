@@ -390,25 +390,41 @@ export const jobRepository = {
     lastErrorCode?: string | null;
     lastErrorMessage?: string | null;
   }) {
-    const existing = this.getById(id);
-    if (!existing) {
+    const succeededIncrement = payload.succeededIncrement ?? 0;
+    const skippedIncrement = payload.skippedIncrement ?? 0;
+    const failedIncrement = payload.failedIncrement ?? 0;
+    const processedIncrement = succeededIncrement + skippedIncrement + failedIncrement;
+    const shouldUpdateLastErrorCode = payload.lastErrorCode !== undefined;
+    const shouldUpdateLastErrorMessage = payload.lastErrorMessage !== undefined;
+
+    const result = db().prepare(
+      `UPDATE sync_jobs
+       SET next_message_id = ?,
+           processed_messages = processed_messages + ?,
+           succeeded_messages = succeeded_messages + ?,
+           skipped_messages = skipped_messages + ?,
+           failed_messages = failed_messages + ?,
+           last_error_code = CASE WHEN ? THEN ? ELSE last_error_code END,
+           last_error_message = CASE WHEN ? THEN ? ELSE last_error_message END,
+           updated_at = ?
+       WHERE id = ?`,
+    ).run(
+      payload.nextMessageId,
+      processedIncrement,
+      succeededIncrement,
+      skippedIncrement,
+      failedIncrement,
+      shouldUpdateLastErrorCode ? 1 : 0,
+      payload.lastErrorCode ?? null,
+      shouldUpdateLastErrorMessage ? 1 : 0,
+      payload.lastErrorMessage ?? null,
+      nowIso(),
+      id,
+    );
+
+    if (result.changes === 0) {
       throw new Error("Job not found");
     }
-
-    const succeeded = existing.succeeded_messages + (payload.succeededIncrement ?? 0);
-    const skipped = existing.skipped_messages + (payload.skippedIncrement ?? 0);
-    const failed = existing.failed_messages + (payload.failedIncrement ?? 0);
-    const processed = succeeded + skipped + failed;
-
-    return this.setStatus(id, existing.status, {
-      next_message_id: payload.nextMessageId,
-      processed_messages: processed,
-      succeeded_messages: succeeded,
-      skipped_messages: skipped,
-      failed_messages: failed,
-      last_error_code: payload.lastErrorCode ?? existing.last_error_code,
-      last_error_message: payload.lastErrorMessage ?? existing.last_error_message,
-    });
   },
 };
 

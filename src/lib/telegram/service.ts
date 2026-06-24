@@ -22,7 +22,7 @@ export type StartLoginResult = {
 
 type MessageLike = {
   id?: number;
-  groupedId?: bigint | string | null;
+  groupedId?: unknown | null;
   message?: string;
   media?: Api.TypeMessageMedia;
   entities?: Api.TypeMessageEntity[];
@@ -749,13 +749,63 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
   try {
     await client.connect();
     const messageIds = buildMessageSequence(job);
+    const mediaFilter = parseAllowedMediaTypes(job.allowed_media_types);
+    const textFilter = parseMessageTextFilter(job);
+    const groupedMessagesCache = new Map<string, MessageLike[]>();
+    const captionedSelectionCache = new Map<string, MessageLike | null>();
+    const messageCache = new Map<number, MessageLike | null>();
+    const messagePrefetchWindow = 50;
+    const alreadyTransferredFlushThreshold = 50;
+    let pendingAlreadyTransferredCount = 0;
+
+    const flushAlreadyTransferredProgress = (nextMessageId: number | null) => {
+      if (pendingAlreadyTransferredCount === 0) {
+        return;
+      }
+
+      jobRepository.recordProgress(job.id, {
+        nextMessageId,
+      });
+      pendingAlreadyTransferredCount = 0;
+    };
+
+    const populateMessageCache = (requestedIds: readonly number[], fetchedMessages: readonly MessageLike[]) => {
+      const fetchedById = new Map<number, MessageLike>();
+      fetchedMessages.forEach((message) => {
+        if (typeof message.id === "number") {
+          fetchedById.set(message.id, message);
+        }
+      });
+      requestedIds.forEach((requestedId) => {
+        messageCache.set(requestedId, fetchedById.get(requestedId) ?? null);
+      });
+    };
+
+    const prefetchMessages = async (startIndex: number) => {
+      const requestedIds = messageIds.slice(startIndex, startIndex + messagePrefetchWindow);
+      const uncachedIds = requestedIds.filter((candidateId) => !messageCache.has(candidateId));
+      if (uncachedIds.length === 0) {
+        return;
+      }
+
+      const fetched = await client.getMessages(job.source_channel_ref, { ids: uncachedIds });
+      const fetchedMessages = Array.isArray(fetched)
+        ? fetched.flatMap((message) => (message ? [message as MessageLike] : []))
+        : fetched
+          ? [fetched as MessageLike]
+          : [];
+      populateMessageCache(uncachedIds, fetchedMessages);
+    };
 
     for (let index = 0; index < messageIds.length; index += 1) {
+      const nextMessageId = messageIds[index + 1] ?? null;
       const currentJob = jobRepository.getById(job.id);
       if (!currentJob) {
+        flushAlreadyTransferredProgress(nextMessageId);
         throw new Error("Job no longer exists");
       }
       if (currentJob.cancel_requested_at) {
+        flushAlreadyTransferredProgress(nextMessageId);
         jobRepository.setStatus(job.id, "cancelled", {
           finished_at: nowIso(),
           worker_id: workerId,
@@ -763,6 +813,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         return;
       }
       if (currentJob.status === "paused") {
+        flushAlreadyTransferredProgress(nextMessageId);
         return;
       }
 
@@ -777,14 +828,17 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
       try {
         const alreadyTransferred = transferRecordRepository.getByJobAndSourceMessageId(job.id, messageId);
         if (alreadyTransferred?.status === "sent" || alreadyTransferred?.status === "skipped") {
-          jobRepository.recordProgress(job.id, {
-            nextMessageId: messageIds[index + 1] ?? null,
-          });
+          pendingAlreadyTransferredCount += 1;
+          if (pendingAlreadyTransferredCount >= alreadyTransferredFlushThreshold) {
+            flushAlreadyTransferredProgress(nextMessageId);
+          }
           continue;
         }
 
-        const fetched = await client.getMessages(job.source_channel_ref, { ids: [messageId] });
-        const sourceMessage = Array.isArray(fetched) ? fetched[0] : fetched;
+        flushAlreadyTransferredProgress(nextMessageId);
+
+        await prefetchMessages(index);
+        const sourceMessage = messageCache.get(messageId) ?? null;
         if (!sourceMessage?.id) {
           transferRecordRepository.upsert({
             jobId: job.id,
@@ -793,26 +847,42 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             errorReason: "Message not found",
           });
           jobRepository.recordProgress(job.id, {
-            nextMessageId: messageIds[index + 1] ?? null,
+            nextMessageId,
             skippedIncrement: 1,
           });
           continue;
         }
 
-        let messagesToForward = sourceMessage.groupedId ? await fetchAlbumMessages(client, job, sourceMessage as MessageLike) : [sourceMessage as MessageLike];
+        const groupedIdKey = getGroupedIdKey(sourceMessage);
+        let messagesToForward = groupedIdKey
+          ? (groupedMessagesCache.get(groupedIdKey) ?? [sourceMessage as MessageLike])
+          : [sourceMessage as MessageLike];
+        if (groupedIdKey && !groupedMessagesCache.has(groupedIdKey)) {
+          messagesToForward = await fetchAlbumMessages(client, job, sourceMessage as MessageLike);
+          groupedMessagesCache.set(groupedIdKey, messagesToForward);
+          messagesToForward.forEach((message) => {
+            if (typeof message.id === "number") {
+              messageCache.set(message.id, message);
+            }
+          });
+        }
 
-        if (job.album_strategy === "captioned_only" && sourceMessage.groupedId) {
-          const selected = selectCaptionedMessage(messagesToForward);
+        if (job.album_strategy === "captioned_only" && groupedIdKey) {
+          const cachedSelected = captionedSelectionCache.get(groupedIdKey);
+          const selected = cachedSelected === undefined ? selectCaptionedMessage(messagesToForward) : cachedSelected;
+          if (cachedSelected === undefined) {
+            captionedSelectionCache.set(groupedIdKey, selected);
+          }
           if (!selected || selected.id !== sourceMessage.id) {
             transferRecordRepository.upsert({
               jobId: job.id,
               sourceMessageId: sourceMessage.id,
-              mediaGroupId: String(sourceMessage.groupedId),
+              mediaGroupId: groupedIdKey,
               status: "skipped",
               errorReason: "Skipped by captioned_only policy",
             });
             jobRepository.recordProgress(job.id, {
-              nextMessageId: messageIds[index + 1] ?? null,
+              nextMessageId,
               skippedIncrement: 1,
             });
             continue;
@@ -820,9 +890,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           messagesToForward = [selected];
         }
 
-        const mediaFilter = parseAllowedMediaTypes(currentJob.allowed_media_types);
         const mediaFilteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
-        const textFilter = parseMessageTextFilter(currentJob);
         const textFilteredMessages = filterMessagesByTextFilter(mediaFilteredMessages.allowed, textFilter);
         const filterSkippedMessages = [
           ...mediaFilteredMessages.skipped.map((message) => ({ message, reason: "Skipped by media type filter" })),
@@ -842,7 +910,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               errorReason: currentMessageWasFiltered.reason,
             });
             jobRepository.recordProgress(job.id, {
-              nextMessageId: messageIds[index + 1] ?? null,
+              nextMessageId,
               skippedIncrement: 1,
             });
             continue;
@@ -862,7 +930,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           });
           if (messagesToForward.length === 0) {
             jobRepository.recordProgress(job.id, {
-              nextMessageId: messageIds[index + 1] ?? null,
+              nextMessageId,
               skippedIncrement: skippedByFilters,
             });
             continue;
@@ -896,7 +964,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             });
           });
           jobRepository.recordProgress(job.id, {
-            nextMessageId: messageIds[index + 1] ?? null,
+            nextMessageId,
             succeededIncrement: forwardResult.sent.length,
             skippedIncrement: skippedByFilters + forwardResult.skipped.length,
           });
@@ -906,7 +974,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           );
           if (!messageToCopy) {
             jobRepository.recordProgress(job.id, {
-              nextMessageId: messageIds[index + 1] ?? null,
+              nextMessageId,
             });
             continue;
           }
@@ -943,12 +1011,13 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             status: "sent",
           });
           jobRepository.recordProgress(job.id, {
-            nextMessageId: messageIds[index + 1] ?? null,
+            nextMessageId,
             succeededIncrement: 1,
             skippedIncrement: skippedCopyAlbumMessages.length,
           });
         }
       } catch (error) {
+        flushAlreadyTransferredProgress(nextMessageId);
         const errorMessage = safeErrorMessage(error);
         transferRecordRepository.upsert({
           jobId: job.id,
@@ -957,7 +1026,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           errorReason: errorMessage,
         });
         jobRepository.recordProgress(job.id, {
-          nextMessageId: messageIds[index + 1] ?? null,
+          nextMessageId,
           failedIncrement: 1,
           lastErrorCode: "message_transfer_failed",
           lastErrorMessage: errorMessage,
@@ -965,6 +1034,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
       }
     }
 
+    flushAlreadyTransferredProgress(null);
     jobRepository.setStatus(job.id, "completed", {
       worker_id: workerId,
       next_message_id: null,
