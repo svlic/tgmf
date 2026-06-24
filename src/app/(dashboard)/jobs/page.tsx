@@ -11,10 +11,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { JobActionButtons } from "@/components/dashboard/forms";
 import { JobProgressRefresh } from "@/components/dashboard/job-progress-refresh";
 import { accountRepository, jobRepository, workerRepository } from "@/lib/db/repositories";
-import { WORKER_HEARTBEAT_STALE_MS } from "@/lib/constants";
+import type { JobStatus } from "@/lib/types";
+
+const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["pending", "claimed", "running", "paused", "failed"];
+const QUEUED_JOB_STATUSES: readonly JobStatus[] = ["pending", "claimed", "paused"];
+const REFRESHING_JOB_STATUSES: readonly JobStatus[] = ["pending", "running"];
 
 function statusVariant(status: string) {
-  if (["completed", "ready"].includes(status)) {
+  if (["completed"].includes(status)) {
     return "green" as const;
   }
 
@@ -22,7 +26,7 @@ function statusVariant(status: string) {
     return "blue" as const;
   }
 
-  if (["failed", "cancelled", "logged_out", "reauth_required"].includes(status)) {
+  if (["failed", "cancelled"].includes(status)) {
     return "red" as const;
   }
 
@@ -57,16 +61,14 @@ export default function JobsPage() {
   const jobs = jobRepository.list();
   const accounts = accountRepository.list();
   const worker = workerRepository.getLatest() ?? null;
-  const workerIsStale = worker
-    ? Date.now() - new Date(worker.heartbeat_at).getTime() > WORKER_HEARTBEAT_STALE_MS
-    : true;
-  const activeRefresh = jobs.some((job) => ["pending", "running"].includes(job.status));
-  const activeJobs = jobs.filter((job) => ["pending", "claimed", "running", "paused", "failed"].includes(job.status));
+  const workerIsStale = worker ? worker.status === "stale" : true;
+  const activeRefresh = jobs.some((job) => REFRESHING_JOB_STATUSES.includes(job.status));
+  const activeJobs = jobs.filter((job) => ACTIVE_JOB_STATUSES.includes(job.status));
   const completedJobs = jobs.filter((job) => job.status === "completed");
   const failedJobs = jobs.filter((job) => job.status === "failed");
   const archivedJobs = jobs.filter((job) => !activeJobs.some((activeJob) => activeJob.id === job.id));
   const readyAccounts = accounts.filter((account) => account.login_state === "ready");
-  const queuedJobs = jobs.filter((job) => ["pending", "claimed", "paused"].includes(job.status));
+  const queuedJobs = jobs.filter((job) => QUEUED_JOB_STATUSES.includes(job.status));
 
   return (
     <div className="space-y-8">

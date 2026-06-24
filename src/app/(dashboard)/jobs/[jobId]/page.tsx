@@ -36,35 +36,23 @@ function normalizeAllowedMediaType(value: unknown): AllowedMediaType | null {
   return null;
 }
 
-function parseAllowedMediaTypes(value: string): AllowedMediaType[] {
+function parseJsonStringArray(value: string) {
   try {
     const parsed: unknown = JSON.parse(value);
     if (!Array.isArray(parsed)) {
       return [];
     }
 
-    return parsed
-      .map(normalizeAllowedMediaType)
-      .filter((mediaType): mediaType is AllowedMediaType => mediaType !== null);
+    return parsed.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter((item) => item.length > 0);
   } catch {
     return [];
   }
 }
 
-function parseStringList(value: string) {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-  } catch {
-    return [];
-  }
+function parseAllowedMediaTypes(value: string): AllowedMediaType[] {
+  return parseJsonStringArray(value)
+    .map(normalizeAllowedMediaType)
+    .filter((mediaType): mediaType is AllowedMediaType => mediaType !== null);
 }
 
 function FilterList({ label, values }: { label: string; values: string[] }) {
@@ -111,10 +99,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
   const account = accountRepository.getById(job.account_id);
   const records = transferRecordRepository.listForJob(jobId);
   const allowedMediaTypes = parseAllowedMediaTypes(job.allowed_media_types);
-  const keywordWhitelist = parseStringList(job.keyword_whitelist);
-  const keywordBlacklist = parseStringList(job.keyword_blacklist);
-  const regexWhitelist = parseStringList(job.regex_whitelist);
-  const regexBlacklist = parseStringList(job.regex_blacklist);
+  const keywordWhitelist = parseJsonStringArray(job.keyword_whitelist);
+  const keywordBlacklist = parseJsonStringArray(job.keyword_blacklist);
+  const regexWhitelist = parseJsonStringArray(job.regex_whitelist);
+  const regexBlacklist = parseJsonStringArray(job.regex_blacklist);
   const progressPercent = job.total_messages > 0 ? Math.min(100, Math.round((job.processed_messages / job.total_messages) * 100)) : 0;
   const shouldRefreshProgress = ["pending", "running"].includes(job.status);
 
