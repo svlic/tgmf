@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "worker": "node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts",
     "worker:dev": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts"
   },
@@ -34,6 +36,8 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4.1.17",
     "tsx": "^4.22.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4"
   }
 }

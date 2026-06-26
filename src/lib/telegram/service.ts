@@ -15,6 +15,11 @@ import {
 import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 import type { AllowedMediaType, DialogCacheRow, SyncJobRow } from "@/lib/types";
 import { nowIso, safeErrorMessage, sleep } from "@/lib/utils";
+import {
+  classifyCopyDelivery,
+  missingTargetMessageErrorReason,
+  partitionForwardDeliveries,
+} from "@/lib/telegram/transfer-outcome";
 
 export type StartLoginResult = {
   loginState: "awaiting_code";
@@ -939,16 +944,32 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
         if (job.mode === "forward") {
           const forwardResult = await forwardMessages(client, job, messagesToForward);
-          if (forwardResult.sent.some(({ targetMessageId }) => targetMessageId !== null)) {
+          const deliveryRows = forwardResult.sent.map(({ sourceMessage, targetMessageId }) => ({
+            sourceMessageId: sourceMessage.id,
+            targetMessageId,
+          }));
+          const { delivered, undelivered } = partitionForwardDeliveries(deliveryRows);
+          if (delivered.length > 0) {
             delayBeforeNextAttempt = true;
           }
-          forwardResult.sent.forEach(({ sourceMessage, targetMessageId }) => {
+          delivered.forEach(({ sourceMessageId, targetMessageId }) => {
+            const sourceMessage = forwardResult.sent.find((row) => row.sourceMessage.id === sourceMessageId)?.sourceMessage;
             transferRecordRepository.upsert({
               jobId: job.id,
-              sourceMessageId: sourceMessage.id,
+              sourceMessageId,
               targetMessageId,
-              mediaGroupId: getGroupedIdKey(sourceMessage),
+              mediaGroupId: sourceMessage ? getGroupedIdKey(sourceMessage) : null,
               status: "sent",
+            });
+          });
+          undelivered.forEach(({ sourceMessageId }) => {
+            const sourceMessage = forwardResult.sent.find((row) => row.sourceMessage.id === sourceMessageId)?.sourceMessage;
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId,
+              mediaGroupId: sourceMessage ? getGroupedIdKey(sourceMessage) : null,
+              status: "failed",
+              errorReason: missingTargetMessageErrorReason(),
             });
           });
           forwardResult.skipped.forEach((message) => {
@@ -960,13 +981,16 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               sourceMessageId: message.id,
               mediaGroupId: getGroupedIdKey(message),
               status: "skipped",
-              errorReason: "Skipped because Telegram did not return a forwarded message",
+              errorReason: "Skipped because message is not forwardable",
             });
           });
           jobRepository.recordProgress(job.id, {
             nextMessageId,
-            succeededIncrement: forwardResult.sent.length,
+            succeededIncrement: delivered.length,
+            failedIncrement: undelivered.length,
             skippedIncrement: skippedByFilters + forwardResult.skipped.length,
+            lastErrorCode: undelivered.length > 0 ? "message_transfer_failed" : null,
+            lastErrorMessage: undelivered.length > 0 ? missingTargetMessageErrorReason() : null,
           });
         } else {
           const messageToCopy = messagesToForward.find(
@@ -1000,21 +1024,37 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               pid: process.pid,
             });
           });
-          if (targetMessageId !== null) {
+          const copyOutcome = classifyCopyDelivery(targetMessageId);
+          if (copyOutcome.outcome === "sent") {
             delayBeforeNextAttempt = true;
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId: messageToCopy.id,
+              targetMessageId: copyOutcome.targetMessageId,
+              mediaGroupId: getGroupedIdKey(messageToCopy),
+              status: "sent",
+            });
+            jobRepository.recordProgress(job.id, {
+              nextMessageId,
+              succeededIncrement: 1,
+              skippedIncrement: skippedCopyAlbumMessages.length,
+            });
+          } else {
+            transferRecordRepository.upsert({
+              jobId: job.id,
+              sourceMessageId: messageToCopy.id,
+              mediaGroupId: getGroupedIdKey(messageToCopy),
+              status: "failed",
+              errorReason: copyOutcome.errorReason,
+            });
+            jobRepository.recordProgress(job.id, {
+              nextMessageId,
+              failedIncrement: 1,
+              skippedIncrement: skippedCopyAlbumMessages.length,
+              lastErrorCode: "message_transfer_failed",
+              lastErrorMessage: copyOutcome.errorReason,
+            });
           }
-          transferRecordRepository.upsert({
-            jobId: job.id,
-            sourceMessageId: messageToCopy.id,
-            targetMessageId,
-            mediaGroupId: getGroupedIdKey(messageToCopy),
-            status: "sent",
-          });
-          jobRepository.recordProgress(job.id, {
-            nextMessageId,
-            succeededIncrement: 1,
-            skippedIncrement: skippedCopyAlbumMessages.length,
-          });
         }
       } catch (error) {
         flushAlreadyTransferredProgress(nextMessageId);
