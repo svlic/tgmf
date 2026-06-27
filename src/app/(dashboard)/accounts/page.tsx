@@ -1,15 +1,10 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { AccountActionButtons, AccountCreateForm } from "@/components/dashboard/forms";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { accountRepository } from "@/lib/db/repositories";
 import { redactSecret } from "@/lib/utils";
-import { EmptyState } from "@/components/ui/empty-state";
 
 function loginStateVariant(status: string) {
   if (status === "ready") {
@@ -28,65 +23,65 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
-      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-        <CardHeader className="gap-1.5">
-          <CardTitle>Telegram accounts</CardTitle>
-          <CardDescription>Onboard Telegram identities</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <PageHeader
+        eyebrow="Telegram"
+        title="Accounts"
+        description="Onboard identities, run login flows, and refresh channel dialogs."
+      />
+
+      <Card>
+        <CardContent className="p-6">
           <AccountCreateForm />
         </CardContent>
       </Card>
 
       {accounts.length === 0 ? (
         <EmptyState
-          title="No Telegram accounts configured"
-          description="Create an account above to start the Telegram login flow, test connectivity, and cache available dialogs."
-        >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Start with the account form at the top of this page.</p>
-        </EmptyState>
-      ) : null}
-
-      {accounts.map((account) => {
-        return (
-          <Card key={account.id} className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-            <CardHeader className="gap-3">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="max-w-2xl space-y-2">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <CardTitle>{account.label}</CardTitle>
-                    <Badge variant={loginStateVariant(account.login_state)}>{account.login_state}</Badge>
+          title="No accounts"
+          description="Use the form above to add a phone number and start the Telegram login flow."
+        />
+      ) : (
+        <ul className="space-y-4">
+          {accounts.map((account) => (
+            <li key={account.id}>
+              <Card>
+                <CardContent className="space-y-4 p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-semibold text-foreground">{account.label}</h2>
+                        <Badge variant={loginStateVariant(account.login_state)}>{account.login_state}</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{account.phone_number}</p>
+                    </div>
+                    <dl className="grid gap-2 text-xs sm:grid-cols-2 sm:gap-x-6">
+                      <div>
+                        <dt className="text-muted-foreground">API ID</dt>
+                        <dd className="font-medium text-foreground">{account.api_id_override || "env default"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">API hash</dt>
+                        <dd className="font-medium text-foreground">
+                          {account.api_hash_override_encrypted ? redactSecret("configured") : "env default"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Telegram user</dt>
+                        <dd className="font-medium text-foreground">{account.telegram_user_id || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Last connected</dt>
+                        <dd className="font-medium text-foreground">{account.last_connected_at || "never"}</dd>
+                      </div>
+                    </dl>
                   </div>
-                  <CardDescription className="leading-5">{account.phone_number}</CardDescription>
-                </div>
-                <div className="surface-glass grid gap-2.5 rounded-lg border border-border/70 bg-white/55 p-3.5 text-xs text-muted-foreground sm:grid-cols-2 lg:max-w-sm w-full">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">API ID</p>
-                    <p className="mt-1 font-medium text-foreground">{account.api_id_override || "env default"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">API hash</p>
-                    <p className="mt-1 font-medium text-foreground">{account.api_hash_override_encrypted ? redactSecret("configured") : "env default"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Telegram user</p>
-                    <p className="mt-1 font-medium text-foreground">{account.telegram_user_id || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Last connected</p>
-                    <p className="mt-1 font-medium text-foreground">{account.last_connected_at || "never"}</p>
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
-                <AccountActionButtons accountId={account.id} />
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
+                  <AccountActionButtons accountId={account.id} />
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

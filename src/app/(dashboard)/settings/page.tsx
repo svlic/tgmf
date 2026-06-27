@@ -1,10 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { Badge } from "@/components/ui/badge";
 import { getBaseEnv } from "@/lib/env";
 
@@ -15,60 +9,58 @@ export default function SettingsPage() {
     {
       label: "DATABASE_URL",
       value: env.DATABASE_URL,
-      description: "SQLite database location shared by the web app and worker.",
+      description: "SQLite path shared by web and worker.",
       configured: Boolean(env.DATABASE_URL),
     },
     {
-      label: "Default Telegram API ID",
+      label: "Telegram API ID",
       value: env.TELEGRAM_API_ID ? "configured" : "missing",
-      description: "Fallback API ID used when an account does not provide an override.",
+      description: "Default when an account has no override.",
       configured: Boolean(env.TELEGRAM_API_ID),
     },
     {
-      label: "Default Telegram API hash",
+      label: "Telegram API hash",
       value: env.TELEGRAM_API_HASH ? "configured" : "missing",
-      description: "Fallback API hash used with the default Telegram application credentials.",
+      description: "Default application credentials.",
       configured: Boolean(env.TELEGRAM_API_HASH),
     },
     {
-      label: "App encryption key",
-      value: "configured at runtime",
-      description: "Protects encrypted secrets stored in the database.",
+      label: "Encryption key",
+      value: "configured",
+      description: "Protects secrets in the database.",
       configured: true,
     },
     {
       label: "Admin password",
-      value: "configured at runtime",
-      description: "Controls access to the administrative dashboard.",
+      value: "configured",
+      description: "Dashboard login.",
       configured: true,
     },
-  ];
+  ] as const;
 
   return (
     <div className="space-y-6">
-      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-        <CardHeader className="gap-3">
-          <Badge variant="slate" className="w-fit">Runtime-backed configuration</Badge>
-          <div className="space-y-2">
-            <CardTitle>Environment settings</CardTitle>
-            <CardDescription>
-              Review the server-side configuration the dashboard depends on before onboarding accounts or launching jobs.
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {settings.map((setting) => (
-            <div key={setting.label} className="surface-glass surface-panel rounded-lg border border-border/70 p-4 shadow-[0_22px_46px_-30px_color-mix(in_oklab,var(--foreground)_16%,transparent)]">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-foreground">{setting.label}</p>
-                <Badge variant={setting.configured ? "green" : "red"}>{setting.configured ? "configured" : "missing"}</Badge>
-              </div>
-              <p className="mt-2 text-sm font-semibold text-foreground/80 font-mono break-all">{setting.value}</p>
-              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{setting.description}</p>
+      <PageHeader
+        eyebrow="Runtime"
+        title="Environment"
+        description="Server-side values required before accounts and jobs can run."
+      />
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {settings.map((setting) => (
+          <div
+            key={setting.label}
+            className="rounded-lg border border-border/60 bg-background/80 px-4 py-3"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{setting.label}</p>
+              <Badge variant={setting.configured ? "green" : "red"}>{setting.configured ? "ok" : "missing"}</Badge>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+            <p className="mt-1.5 font-mono text-sm font-semibold tabular-nums text-foreground break-all">{setting.value}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{setting.description}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
