@@ -1,15 +1,11 @@
 import { notFound } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatTile } from "@/components/dashboard/stat-tile";
 import { JobActionButtons } from "@/components/dashboard/forms";
 import { JobProgressRefresh } from "@/components/dashboard/job-progress-refresh";
-import { accountRepository, jobRepository, transferRecordRepository } from "@/lib/db/repositories";
+import { LinkButton } from "@/components/ui/link-button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   DataTable,
   DataTableBody,
@@ -19,6 +15,8 @@ import {
   DataTableRow,
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { accountRepository, jobRepository, transferRecordRepository } from "@/lib/db/repositories";
+import { jobProgressPercent, jobStatusVariant } from "@/lib/job-ui";
 import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 import type { AllowedMediaType } from "@/lib/types";
 
@@ -43,7 +41,10 @@ function parseJsonStringArray(value: string) {
       return [];
     }
 
-    return parsed.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter((item) => item.length > 0);
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
   } catch {
     return [];
   }
@@ -58,34 +59,20 @@ function parseAllowedMediaTypes(value: string): AllowedMediaType[] {
 function FilterList({ label, values }: { label: string; values: string[] }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {values.length === 0 ? (
-          <span className="text-sm leading-6 text-muted-foreground">None</span>
+          <span className="text-sm text-muted-foreground">None</span>
         ) : (
           values.map((value) => (
-            <Badge key={value} variant="blue">{value}</Badge>
+            <Badge key={value} variant="blue">
+              {value}
+            </Badge>
           ))
         )}
       </div>
     </div>
   );
-}
-
-function statusVariant(status: string) {
-  if (["completed"].includes(status)) {
-    return "green" as const;
-  }
-
-  if (["running", "pending", "claimed"].includes(status)) {
-    return "blue" as const;
-  }
-
-  if (["failed", "cancelled"].includes(status)) {
-    return "red" as const;
-  }
-
-  return "amber" as const;
 }
 
 export default async function JobDetailPage({ params }: { params: Promise<{ jobId: string }> }) {
@@ -103,143 +90,116 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
   const keywordBlacklist = parseJsonStringArray(job.keyword_blacklist);
   const regexWhitelist = parseJsonStringArray(job.regex_whitelist);
   const regexBlacklist = parseJsonStringArray(job.regex_blacklist);
-  const progressPercent = job.total_messages > 0 ? Math.min(100, Math.round((job.processed_messages / job.total_messages) * 100)) : 0;
+  const progressPercent = jobProgressPercent(job.processed_messages, job.total_messages);
   const shouldRefreshProgress = ["pending", "running"].includes(job.status);
 
   return (
     <div className="space-y-6">
       <JobProgressRefresh active={shouldRefreshProgress} />
-      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
-        <CardHeader className="gap-4 pb-3">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-3">
-                <CardTitle>Job details</CardTitle>
-                <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
-              </div>
-              <CardDescription>Inspect the selected transfer job, its source/target mapping, and recovery actions.</CardDescription>
-            </div>
-            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 px-4 py-3 text-sm text-muted-foreground">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Job ID</p>
-              <p className="mt-1 max-w-[18rem] truncate font-mono text-xs font-semibold text-foreground" title={job.id}>{job.id}</p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Source</p>
-              <p className="mt-2 break-all font-medium text-foreground">{job.source_channel_ref}</p>
-            </div>
-            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Target</p>
-              <p className="mt-2 break-all font-medium text-foreground">{job.target_channel_ref}</p>
-            </div>
-            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Range</p>
-              <p className="mt-2 font-medium text-foreground">{job.start_message_id} - {job.end_message_id}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{job.job_order}</p>
-            </div>
-            <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Progress</p>
-                <span className="text-sm font-semibold text-primary">{progressPercent}%</span>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full border border-primary/10 bg-secondary/80">
-                <div
-                  className="h-full rounded-full bg-primary shadow-[0_8px_18px_-10px_color-mix(in_oklab,var(--primary)_80%,transparent)] transition-[width] duration-500"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <p className="mt-2 font-medium text-foreground">{job.processed_messages}/{job.total_messages}</p>
-              <p className="mt-1 break-words text-sm text-muted-foreground">Mode: {job.mode} · Album: {job.album_strategy}</p>
-            </div>
-          </div>
 
-          <div className="surface-glass rounded-lg border border-border/70 bg-white/55 p-4">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">Recovery and control actions</p>
-                <p className="text-sm leading-6 text-muted-foreground">Pause, resume, cancel, or retry failed messages without leaving this page.</p>
-              </div>
-              <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
+      <PageHeader
+        eyebrow="Job"
+        title={`${job.source_channel_ref} → ${job.target_channel_ref}`}
+        description={`ID ${job.id} · ${job.mode} · ${job.job_order}`}
+        actions={
+          <>
+            <Badge variant={jobStatusVariant(job.status)}>{job.status}</Badge>
+            <LinkButton href="/jobs" variant="secondary" size="sm">
+              All jobs
+            </LinkButton>
+          </>
+        }
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Progress" value={`${progressPercent}%`} hint={`${job.processed_messages} / ${job.total_messages} messages`} />
+        <StatTile label="Range" value={`${job.start_message_id}–${job.end_message_id}`} hint={job.album_strategy} />
+        <StatTile label="Account" value={account?.label ?? "Deleted"} hint={account?.phone_number} />
+        <StatTile
+          label="Outcomes"
+          value={`${job.succeeded_messages} ok`}
+          hint={`${job.failed_messages} failed · ${job.skipped_messages} skipped`}
+        />
+      </div>
+
+      <div className="h-2 overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${progressPercent}%` }} />
+      </div>
+
+      <Card>
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-foreground">Lifecycle actions</p>
+            <Badge variant={jobStatusVariant(job.status)}>{job.status}</Badge>
+          </div>
+          <JobActionButtons jobId={job.id} status={job.status} />
+          {job.last_error_message ? (
+            <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {job.last_error_message}
+            </p>
+          ) : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-border/60 p-4">
+              <FilterList label="Keyword whitelist" values={keywordWhitelist} />
             </div>
-            <JobActionButtons jobId={job.id} status={job.status} />
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
-              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Telegram account</p>
-                <p className="mt-2 font-medium text-foreground">{account?.label ?? "Deleted account"}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{account?.phone_number ?? "Account record is no longer available."}</p>
-                <p className="mt-2 truncate font-mono text-xs text-muted-foreground" title={job.account_id}>{job.account_id}</p>
-              </div>
-              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Media filter</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {allowedMediaTypes.length === 0 ? (
-                    <span className="text-sm leading-6 text-muted-foreground">All supported media types</span>
-                  ) : (
-                    allowedMediaTypes.map((mediaType) => (
-                      <Badge key={mediaType} variant="blue">{mediaType}</Badge>
-                    ))
-                  )}
-                </div>
-              </div>
-              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Last error</p>
-                <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">{job.last_error_message || "No error recorded."}</p>
-              </div>
+            <div className="rounded-lg border border-border/60 p-4">
+              <FilterList label="Keyword blacklist" values={keywordBlacklist} />
             </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
-                <FilterList label="Keyword whitelist" values={keywordWhitelist} />
-              </div>
-              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
-                <FilterList label="Keyword blacklist" values={keywordBlacklist} />
-              </div>
-              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
-                <FilterList label="Regex whitelist" values={regexWhitelist} />
-              </div>
-              <div className="rounded-lg border border-border/70 bg-background/90 p-4">
-                <FilterList label="Regex blacklist" values={regexBlacklist} />
-              </div>
+            <div className="rounded-lg border border-border/60 p-4">
+              <FilterList label="Regex whitelist" values={regexWhitelist} />
+            </div>
+            <div className="rounded-lg border border-border/60 p-4">
+              <FilterList label="Regex blacklist" values={regexBlacklist} />
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/60 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Media filter</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {allowedMediaTypes.length === 0 ? (
+                <span className="text-sm text-muted-foreground">All supported types</span>
+              ) : (
+                allowedMediaTypes.map((mediaType) => (
+                  <Badge key={mediaType} variant="blue">
+                    {mediaType}
+                  </Badge>
+                ))
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="surface-glass surface-panel border-border/70 shadow-[0_28px_64px_-38px_color-mix(in_oklab,var(--foreground)_18%,transparent)]">
+      <Card>
         <CardHeader>
-          <CardDescription>Per-message execution log</CardDescription>
-          <CardTitle>Message transfer records</CardTitle>
+          <CardDescription>Per-message log</CardDescription>
+          <CardTitle>Transfer records</CardTitle>
         </CardHeader>
         <CardContent>
           {records.length === 0 ? (
             <EmptyState
-              title="No message records yet"
-              description="Once the worker begins processing this job, every transfer attempt will appear here with status and error details."
-            >
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Use the controls above to resume or retry work if the job is paused.</p>
-            </EmptyState>
+              title="No records yet"
+              description="Transfer attempts will appear here once the worker processes this job."
+            />
           ) : (
             <DataTable>
               <DataTableHead>
                 <DataTableRow>
-                  <DataTableHeader>Source message</DataTableHeader>
-                  <DataTableHeader>Target message</DataTableHeader>
+                  <DataTableHeader>Source</DataTableHeader>
+                  <DataTableHeader>Target</DataTableHeader>
                   <DataTableHeader>Group</DataTableHeader>
                   <DataTableHeader>Status</DataTableHeader>
                   <DataTableHeader>Error</DataTableHeader>
-                  <DataTableHeader>Processed at</DataTableHeader>
+                  <DataTableHeader>Processed</DataTableHeader>
                 </DataTableRow>
               </DataTableHead>
               <DataTableBody>
                 {records.map((record) => (
                   <DataTableRow key={record.id}>
-                    <DataTableCell className="whitespace-nowrap font-medium text-foreground">{record.source_message_id}</DataTableCell>
+                    <DataTableCell className="whitespace-nowrap font-medium">{record.source_message_id}</DataTableCell>
                     <DataTableCell className="whitespace-nowrap">{record.target_message_id ?? "—"}</DataTableCell>
                     <DataTableCell className="max-w-[12rem] break-all font-mono text-xs">{record.media_group_id ?? "—"}</DataTableCell>
                     <DataTableCell>
-                      <Badge variant={statusVariant(record.status)}>{record.status}</Badge>
+                      <Badge variant={jobStatusVariant(record.status)}>{record.status}</Badge>
                     </DataTableCell>
                     <DataTableCell className="max-w-[22rem] break-words">{record.error_reason ?? "—"}</DataTableCell>
                     <DataTableCell className="whitespace-nowrap font-mono text-xs">{record.processed_at ?? "—"}</DataTableCell>
