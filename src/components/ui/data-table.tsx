@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export function DataTable({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="overflow-hidden rounded-[var(--radius-xl)] border border-border/70 bg-card/90 shadow-[var(--shadow-panel)] backdrop-blur-sm">
+    <div className="overflow-hidden rounded-[var(--radius-xl)] border border-border/70 bg-card shadow-[var(--shadow-panel)]">
       <div className="overflow-x-auto">
         <table className={cn("w-full min-w-full border-collapse", className)} {...props} />
       </div>
@@ -27,7 +27,7 @@ export function DataTableHeader({ className, ...props }: React.ThHTMLAttributes<
   return (
     <th
       className={cn(
-        "px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground",
+        "px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground",
         className,
       )}
       {...props}

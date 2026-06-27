@@ -3,7 +3,6 @@ import { DEFAULT_DELAY_SECONDS, LOGIN_WINDOW_MINUTES, MAX_LOGIN_ATTEMPTS } from 
 import { encryptString, decryptString } from "@/lib/crypto";
 import type {
   AllowedMediaType,
-  AppSettingRow,
   DialogCacheRow,
   MessageTransferRecordRow,
   SyncJobRow,
@@ -480,19 +479,6 @@ export const workerRepository = {
     return db().prepare(`SELECT * FROM worker_heartbeats ORDER BY heartbeat_at DESC LIMIT 1`).get() as
       | WorkerHeartbeatRow
       | undefined;
-  },
-};
-
-export const settingsRepository = {
-  get(key: string) {
-    return (db().prepare(`SELECT * FROM app_settings WHERE key = ?`).get(key) as AppSettingRow | undefined) ?? null;
-  },
-  set(key: string, value: unknown) {
-    db().prepare(
-      `INSERT INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-    ).run(key, JSON.stringify(value), nowIso());
-    return this.get(key);
   },
 };
 

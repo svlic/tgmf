@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "@/components/ui/field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CSRF_HEADER_NAME } from "@/lib/constants";
 import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 import type { SyncJobRow } from "@/lib/types";
 
@@ -45,7 +46,7 @@ async function submitJson<TData = unknown>(url: string, body: unknown, method = 
     method,
     headers: {
       "content-type": "application/json",
-      "x-tgmf-csrf": window.location.host,
+      [CSRF_HEADER_NAME]: window.location.host,
     },
     body: JSON.stringify(body),
     credentials: "same-origin",
@@ -360,7 +361,7 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
           <FieldLabel>Allowed media types</FieldLabel>
           <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/40 p-3 sm:grid-cols-2 lg:grid-cols-3">
             {ALLOWED_MEDIA_TYPES.map((mediaType) => (
-              <label key={mediaType} className="flex items-center gap-2 rounded-[var(--radius)] bg-white/55 px-3 py-2 text-sm text-foreground shadow-sm shadow-black/5">
+              <label key={mediaType} className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-2 text-sm text-foreground">
                 <input type="checkbox" name="allowedMediaTypes" value={mediaType} className="size-4 rounded border-border text-foreground accent-foreground" />
                 <span>{mediaType}</span>
               </label>
@@ -485,7 +486,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <form
-          className="rounded-[var(--radius)] border border-border/70 bg-white/55 p-3 shadow-sm shadow-black/5"
+          className="rounded-lg border border-border/60 bg-card p-3"
           onSubmit={(event) => {
             event.preventDefault();
             const trimmedCode = phoneCode.trim();
@@ -527,7 +528,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
         </form>
 
         <form
-          className="rounded-[var(--radius)] border border-border/70 bg-white/55 p-3 shadow-sm shadow-black/5"
+          className="rounded-lg border border-border/60 bg-card p-3"
           onSubmit={(event) => {
             event.preventDefault();
             if (!password) {
@@ -647,7 +648,7 @@ export function AccountActionPanel({
   phoneNumber: string;
 }) {
   return (
-    <Card className="surface-glass border-border/70 bg-white/60 shadow-[0_20px_48px_-32px_color-mix(in_oklab,var(--foreground)_16%,transparent)]">
+    <Card>
       <CardHeader className="gap-3 pb-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

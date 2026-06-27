@@ -9,12 +9,14 @@ export function Badge({ className, variant = "slate", ...props }: BadgeProps) {
   return (
     <span
       className={cn(
-        "status-pill inline-flex items-center rounded-full border px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.08em]",
-        variant === "slate" && "border-border bg-secondary/85 text-secondary-foreground",
-        variant === "blue" && "border-primary/15 bg-primary/10 text-primary",
-        variant === "green" && "border-emerald-300/50 bg-emerald-400/10 text-emerald-700",
-        variant === "amber" && "border-amber-300/60 bg-amber-400/12 text-amber-800",
-        variant === "red" && "border-destructive/20 bg-destructive/10 text-destructive",
+        "status-pill inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize tracking-normal",
+        variant === "slate" && "border-border bg-secondary text-secondary-foreground",
+        variant === "blue" && "border-primary/20 bg-primary/10 text-primary",
+        variant === "green" &&
+          "border-[color:color-mix(in_oklab,var(--success)_35%,transparent)] bg-[color:color-mix(in_oklab,var(--success)_14%,transparent)] text-success-foreground",
+        variant === "amber" &&
+          "border-[color:color-mix(in_oklab,var(--warning)_40%,transparent)] bg-[color:color-mix(in_oklab,var(--warning)_18%,transparent)] text-warning-foreground",
+        variant === "red" && "border-destructive/25 bg-destructive/10 text-destructive",
         className,
       )}
       {...props}

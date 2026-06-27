@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { JobActionButtons } from "@/components/dashboard/forms";
 import { JobProgressRefresh } from "@/components/dashboard/job-progress-refresh";
@@ -100,11 +101,11 @@ export default function JobsPage() {
       ) : (
         <div className="space-y-8">
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">Active queue</h2>
+            <SectionHeading title="Active queue" />
             {activeJobs.length === 0 ? (
               <p className="text-sm text-muted-foreground">No active jobs. Queued work will appear here.</p>
             ) : (
-              <ul className="divide-y divide-border/70 rounded-[var(--radius-xl)] border border-border/65 bg-card">
+              <ul className="divide-y divide-border/70 overflow-hidden rounded-[var(--radius-xl)] border border-border/70 bg-card shadow-[var(--shadow-panel)]">
                 {activeJobs.map((job) => {
                   const account = accountRepository.getById(job.account_id);
                   const progressPercent = jobProgressPercent(job.processed_messages, job.total_messages);
@@ -153,8 +154,8 @@ export default function JobsPage() {
 
           {archivedJobs.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">History</h2>
-              <ul className="divide-y divide-border/70 rounded-[var(--radius-xl)] border border-border/65 bg-card/80">
+              <SectionHeading title="History" />
+              <ul className="divide-y divide-border/70 overflow-hidden rounded-[var(--radius-xl)] border border-border/70 bg-card shadow-[var(--shadow-panel)]">
                 {archivedJobs.map((job) => {
                   const account = accountRepository.getById(job.account_id);
 

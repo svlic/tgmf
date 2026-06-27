@@ -17,7 +17,6 @@ export type SecretEnv = {
   APP_ENCRYPTION_KEY: string;
   ADMIN_PASSWORD: string;
 };
-export type AppEnv = BaseEnv & SecretEnv;
 
 let cachedBaseEnv: BaseEnv | null = null;
 let cachedSecretEnv: SecretEnv | null = null;
@@ -61,11 +60,4 @@ export function getSecretEnv(): SecretEnv {
   }
 
   return cachedSecretEnv;
-}
-
-export function getEnv(): AppEnv {
-  return {
-    ...getBaseEnv(),
-    ...getSecretEnv(),
-  };
 }

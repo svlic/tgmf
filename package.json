@@ -16,7 +16,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "clsx": "^2.1.1",
-    "input": "^1.0.1",
+
     "jose": "^6.2.3",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",

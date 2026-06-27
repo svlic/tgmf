@@ -3,13 +3,6 @@ import { WORKER_POLL_INTERVAL_MS } from "@/lib/constants";
 import { processJob } from "@/lib/telegram/service";
 import { generateId, nowIso, safeErrorMessage, sleep } from "@/lib/utils";
 
-function summarizeError(error: unknown) {
-  return {
-    errorName: error instanceof Error ? error.name : "UnknownError",
-    hasError: true,
-  };
-}
-
 const workerId = process.env.WORKER_ID?.trim() || generateId("worker");
 let stopped = false;
 
@@ -53,7 +46,8 @@ async function runJob() {
     heartbeat("idle", null, {
       phase: "job_failed",
       jobId: job.id,
-      ...summarizeError(error),
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      hasError: true,
     });
   }
 }
@@ -80,7 +74,8 @@ process.on("SIGTERM", () => stop("SIGTERM"));
 main().catch((error) => {
   heartbeat("stale", null, {
     phase: "crashed",
-    ...summarizeError(error),
+    errorName: error instanceof Error ? error.name : "UnknownError",
+    hasError: true,
   });
   process.exitCode = 1;
 });

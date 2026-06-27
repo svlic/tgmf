@@ -34,9 +34,10 @@ All UI colors come from `src/app/globals.css` `:root` and `@theme inline`. Do no
 
 ## 4. Surfaces
 
-- **Default card**: `Card` component (`surface-glass` + `surface-panel` baked in)
-- **Inset stat / meta**: `rounded-lg border border-border/60 bg-background/80 px-4 py-3`
-- **Avoid**: duplicate long custom shadows on every card; prefer default `Card` shadow
+- **Default card**: `Card` — `bg-card`, `border-border/70`, `shadow-[var(--shadow-panel)]`
+- **Inset stat / meta**: `Panel` (or `StatTile`, which wraps `Panel`)
+- **Section titles** (in-page, below `PageHeader`): `SectionHeading`
+- **Avoid**: glassmorphism, multi-layer page gradients, `bg-white/80` on controls, raw emerald/amber in components
 
 ## 5. Components
 
@@ -44,15 +45,18 @@ All UI colors come from `src/app/globals.css` `:root` and `@theme inline`. Do no
 |---------|----------|
 | Primary / secondary buttons | `Button`, `LinkButton` |
 | Page title + actions | `PageHeader` |
-| Metric tile | `StatTile` |
+| Section title + description | `SectionHeading` |
+| Metric tile | `StatTile` → `Panel` |
+| Inset blocks | `Panel` |
 | Status chips | `Badge` + `jobStatusVariant` from `@/lib/job-ui` |
 | Empty lists | `EmptyState` |
 | Forms | `Field` + `Button` |
+| Tables | `DataTable` |
 
 ## 6. Motion
 
 - Transitions: `duration-200 ease-out` on interactive elements
-- Hover lift: `hover:-translate-y-0.5` on buttons only (not every card)
+- Buttons: color/opacity only; no hover lift on cards or list rows
 - Progress bars: `transition-[width] duration-500`
 - GPU-only: `transform`, `opacity`, `width` (progress)
 

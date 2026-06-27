@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Badge } from "@/components/ui/badge";
+import { Panel } from "@/components/ui/panel";
 import { getBaseEnv } from "@/lib/env";
 
 export default function SettingsPage() {
@@ -48,17 +49,14 @@ export default function SettingsPage() {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {settings.map((setting) => (
-          <div
-            key={setting.label}
-            className="rounded-lg border border-border/60 bg-background/80 px-4 py-3"
-          >
+          <Panel key={setting.label}>
             <div className="flex items-start justify-between gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{setting.label}</p>
               <Badge variant={setting.configured ? "green" : "red"}>{setting.configured ? "ok" : "missing"}</Badge>
             </div>
             <p className="mt-1.5 font-mono text-sm font-semibold tabular-nums text-foreground break-all">{setting.value}</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">{setting.description}</p>
-          </div>
+          </Panel>
         ))}
       </div>
     </div>

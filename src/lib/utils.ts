@@ -9,11 +9,6 @@ export function cn(...inputs: ClassValue[]) {
 export function nowIso() {
   return new Date().toISOString();
 }
-
-export function toInt(value: string | number) {
-  return Number.parseInt(String(value), 10);
-}
-
 export function safeErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;

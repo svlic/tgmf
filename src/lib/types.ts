@@ -3,8 +3,6 @@ export type AdminSessionPayload = {
   issuedAt: number;
 };
 
-export type LoginAttemptStatus = "success" | "failure";
-
 export type JobStatus =
   | "draft"
   | "pending"
