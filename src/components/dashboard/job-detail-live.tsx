@@ -186,7 +186,9 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
 
       <Card>
         <CardHeader>
-          <CardDescription>Per-message log</CardDescription>
+          <CardDescription>
+            Showing the latest {data.records.length} of {data.record_count} records to keep live refresh responsive.
+          </CardDescription>
           <CardTitle>Transfer records</CardTitle>
         </CardHeader>
         <CardContent>

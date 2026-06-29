@@ -2,6 +2,7 @@ import type { JobStatus, SyncJobRow, WorkerHeartbeatRow } from "@/lib/types";
 
 export const JOBS_POLL_INTERVAL_MS = 2_000;
 export const JOBS_MUTATED_EVENT = "tgmf:jobs-mutated";
+export const JOB_DETAIL_RECORD_LIMIT = 100;
 
 export type JobListItemSnapshot = {
   id: string;
@@ -43,6 +44,8 @@ export type JobDetailSnapshot = {
   account_phone: string | null;
   progress_percent: number;
   needs_polling: boolean;
+  record_count: number;
+  record_limit: number;
   records: Array<{
     id: string;
     source_message_id: number;

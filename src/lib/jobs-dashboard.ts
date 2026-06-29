@@ -1,6 +1,7 @@
 import { accountRepository, jobRepository, transferRecordRepository, workerRepository } from "@/lib/db/repositories";
 import { WORKER_HEARTBEAT_STALE_MS } from "@/lib/constants";
 import { formatJobDateTime, jobProgressPercent } from "@/lib/job-ui";
+import { JOB_DETAIL_RECORD_LIMIT } from "@/lib/jobs-snapshots";
 import type {
   JobDetailSnapshot,
   JobListItemSnapshot,
@@ -76,7 +77,8 @@ export function buildJobDetailSnapshot(jobId: string): JobDetailSnapshot | null 
   }
 
   const account = accountRepository.getById(job.account_id);
-  const records = transferRecordRepository.listForJob(jobId).map((record) => ({
+  const recordCount = transferRecordRepository.countForJob(jobId);
+  const records = transferRecordRepository.listLatestForJob(jobId, JOB_DETAIL_RECORD_LIMIT).map((record) => ({
     id: record.id,
     source_message_id: record.source_message_id,
     target_message_id: record.target_message_id,
@@ -92,6 +94,8 @@ export function buildJobDetailSnapshot(jobId: string): JobDetailSnapshot | null 
     account_phone: account?.phone_number ?? null,
     progress_percent: jobProgressPercent(job.processed_messages, job.total_messages),
     needs_polling: REFRESHING_JOB_STATUSES.includes(job.status),
+    record_count: recordCount,
+    record_limit: JOB_DETAIL_RECORD_LIMIT,
     records,
   };
 }
