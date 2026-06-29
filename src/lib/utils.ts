@@ -24,15 +24,3 @@ export function generateId(prefix: string) {
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-export function redactSecret(value: string | null | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  if (value.length <= 4) {
-    return "••••";
-  }
-
-  return `${value.slice(0, 2)}••••${value.slice(-2)}`;
-}

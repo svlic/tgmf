@@ -13,13 +13,8 @@ const appEncryptionKeySchema = z
 const adminPasswordSchema = z.string().min(1);
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
-export type SecretEnv = {
-  APP_ENCRYPTION_KEY: string;
-  ADMIN_PASSWORD: string;
-};
 
 let cachedBaseEnv: BaseEnv | null = null;
-let cachedSecretEnv: SecretEnv | null = null;
 let cachedAppEncryptionKey: string | null = null;
 let cachedAdminPassword: string | null = null;
 
@@ -49,15 +44,4 @@ export function getAdminPassword(): string {
   }
 
   return cachedAdminPassword;
-}
-
-export function getSecretEnv(): SecretEnv {
-  if (!cachedSecretEnv) {
-    cachedSecretEnv = {
-      APP_ENCRYPTION_KEY: getAppEncryptionKey(),
-      ADMIN_PASSWORD: getAdminPassword(),
-    };
-  }
-
-  return cachedSecretEnv;
 }

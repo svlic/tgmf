@@ -1,9 +1,10 @@
 import * as React from "react";
 import { buttonVariants } from "@/components/ui/button-variants";
+import type { ButtonSize, ButtonVariant } from "@/components/ui/button-variants";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "default" | "secondary" | "danger" | "ghost";
-  size?: "default" | "sm" | "lg";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 };
 
 export function Button({ className, variant = "default", size = "default", ...props }: ButtonProps) {

@@ -116,9 +116,3 @@ export type WorkerHeartbeatRow = {
   started_at: string;
   details_json: string | null;
 };
-
-export type AppSettingRow = {
-  key: string;
-  value_json: string;
-  updated_at: string;
-};
