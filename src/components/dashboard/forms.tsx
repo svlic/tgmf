@@ -431,7 +431,10 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
               "connectivity",
               "Checking connectivity...",
               () => submitJson(`/api/accounts/${accountId}/connectivity`, {}),
-              () => "Connectivity checked",
+              () => {
+                notifyAccountsMutated();
+                return "Connectivity checked";
+              },
             );
           }}
         >
@@ -446,7 +449,10 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
               "start-login",
               "Requesting Telegram verification code...",
               () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/start-login`, {}),
-              () => "Verification code requested. Enter the code from Telegram below.",
+              () => {
+                notifyAccountsMutated();
+                return "Verification code requested. Enter the code from Telegram below.";
+              },
             );
           }}
         >
