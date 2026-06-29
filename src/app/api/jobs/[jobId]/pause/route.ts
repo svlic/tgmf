@@ -15,7 +15,7 @@ export async function POST(
     if (!job) {
       return fail("Job not found", 404);
     }
-    if (!["pending", "running", "claimed"].includes(job.status)) {
+    if (!["pending", "running"].includes(job.status)) {
       return fail("Only pending or running jobs can be paused", 409);
     }
 

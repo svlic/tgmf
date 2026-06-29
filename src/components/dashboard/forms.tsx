@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useState } from "react";
-import { useRouter } from "next/navigation";
+import { notifyAccountsMutated } from "@/lib/accounts-client-events";
+import { notifyJobsMutated } from "@/lib/jobs-client-events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -29,10 +30,6 @@ type JsonResult<TData = unknown> =
       ok: false;
       error: string;
     };
-
-function createClientAttemptId() {
-  return globalThis.crypto?.randomUUID?.() ?? `login-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 function parseFilterLines(value: FormDataEntryValue | null) {
   return String(value || "")
@@ -112,28 +109,19 @@ export function LoginForm() {
         event.preventDefault();
         setLoading(true);
         setState({ error: null, success: null });
-        const attemptId = createClientAttemptId();
         const formData = new FormData(event.currentTarget);
 
         try {
-          console.info("[admin-login-ui] submitting login request", {
-            attemptId,
-            path: window.location.pathname,
-            host: window.location.host,
-          });
           const result = await submitJson("/api/auth/login", {
             password: String(formData.get("password") || ""),
           });
           if (!result.ok) {
-            console.warn("[admin-login-ui] login request rejected", { attemptId, error: result.error });
             setState({ error: result.error, success: null });
             return;
           }
-          console.info("[admin-login-ui] login accepted, redirecting", { attemptId, target: "/" });
           window.location.replace("/");
         } catch (error) {
           const message = error instanceof Error ? error.message : "Login failed";
-          console.error("[admin-login-ui] login request failed", { attemptId, message });
           setState({ error: message, success: null });
         } finally {
           setLoading(false);
@@ -170,7 +158,6 @@ export function LogoutButton() {
 }
 
 export function AccountCreateForm() {
-  const router = useRouter();
   const [state, setState] = useState<FormState>({ error: null, success: null });
   return (
     <form
@@ -192,7 +179,7 @@ export function AccountCreateForm() {
         }
         setState({ error: null, success: "Account created" });
         event.currentTarget.reset();
-        router.refresh();
+        notifyAccountsMutated();
       }}
     >
       <Field>
@@ -351,6 +338,9 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
             <option value="full_group">full_group</option>
             <option value="captioned_only">captioned_only</option>
           </Select>
+          <FieldDescription>
+            full_group is not fully implemented yet—album media may be incomplete. captioned_only applies only inside Telegram albums; single messages are unaffected.
+          </FieldDescription>
         </Field>
         <Field className="md:col-span-2">
           <FieldLabel htmlFor="delaySeconds">Delay between messages</FieldLabel>
@@ -401,7 +391,6 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
 }
 
 export function AccountActionButtons({ accountId }: { accountId: string }) {
-  const router = useRouter();
   const phoneCodeId = useId();
   const passwordId = useId();
   const [feedback, setFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
@@ -476,7 +465,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
             );
 
             if (refreshed) {
-              router.refresh();
+              notifyAccountsMutated();
             }
           }}
         >
@@ -501,7 +490,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
               () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode: trimmedCode }),
               (data) => {
                 setPhoneCode("");
-                router.refresh();
+                notifyAccountsMutated();
                 return `Login state: ${data.loginState}`;
               },
             );
@@ -542,7 +531,7 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
               () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-password`, { password }),
               (data) => {
                 setPassword("");
-                router.refresh();
+                notifyAccountsMutated();
                 return `Login state: ${data.loginState}`;
               },
             );
@@ -575,7 +564,6 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
 }
 
 export function JobActionButtons({ jobId, status }: { jobId: string; status: string }) {
-  const router = useRouter();
   const [feedback, setFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const disabled = pendingAction !== null;
@@ -591,7 +579,7 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
       }
 
       setFeedback({ message: successMessage, tone: "success" });
-      router.refresh();
+      notifyJobsMutated();
     } catch (error) {
       setFeedback({ message: error instanceof Error ? error.message : "Job action failed", tone: "error" });
     } finally {
@@ -607,7 +595,7 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
         onClick={() => {
           void runAction("pause", `/api/jobs/${jobId}/pause`, "Pausing job...", "Job paused");
         }}
-        disabled={disabled || (status !== "running" && status !== "pending")}
+        disabled={disabled || !["pending", "running"].includes(status)}
       >
         {pendingAction === "pause" ? "Pausing..." : "Pause"}
       </Button>
@@ -617,7 +605,7 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
         onClick={() => {
           void runAction("resume", `/api/jobs/${jobId}/resume`, "Resuming job...", "Job resumed");
         }}
-        disabled={disabled || (status !== "paused" && status !== "failed")}
+        disabled={disabled || status !== "paused"}
       >
         {pendingAction === "resume" ? "Resuming..." : "Resume"}
       </Button>
