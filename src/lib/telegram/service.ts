@@ -16,6 +16,10 @@ import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 import type { AllowedMediaType, DialogCacheRow, SyncJobRow } from "@/lib/types";
 import { nowIso, safeErrorMessage, sleep } from "@/lib/utils";
 import {
+  filterMessagesByTextFilter,
+  parseMessageTextFilterFromJob,
+} from "@/lib/telegram/message-text-filter";
+import {
   classifyCopyDelivery,
   missingTargetMessageErrorReason,
   partitionForwardDeliveries,
@@ -286,119 +290,9 @@ function parseAllowedMediaTypes(value: string) {
   }
 }
 
-const MAX_FILTER_ITEMS = 50;
-const MAX_REGEX_TEXT_LENGTH = 4096;
 const COPY_PROGRESS_REPORT_INTERVAL_MS = 2_000;
 const COPY_PROGRESS_REPORT_PERCENT_STEP = 5;
 const TELEGRAM_TRANSFER_LOG_PREFIX = "[telegram-transfer]";
-
-type MessageTextFilter = {
-  keywordWhitelist: string[];
-  keywordBlacklist: string[];
-  regexWhitelist: RegExp[];
-  regexBlacklist: RegExp[];
-};
-
-function parseStringList(value: string) {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0)
-      .slice(0, MAX_FILTER_ITEMS);
-  } catch {
-    return [];
-  }
-}
-
-function hasNestedQuantifier(pattern: string) {
-  return /\([^)]*[+*][^)]*\)\s*(?:[+*]|\{\d*,?\d*\})/.test(pattern);
-}
-
-function compileRegexFilters(patterns: string[]) {
-  const filters: RegExp[] = [];
-  for (const pattern of patterns) {
-    if (hasNestedQuantifier(pattern)) {
-      continue;
-    }
-
-    try {
-      filters.push(new RegExp(pattern, "i"));
-    } catch {
-      continue;
-    }
-  }
-
-  return filters;
-}
-
-function parseMessageTextFilter(job: SyncJobRow): MessageTextFilter {
-  const regexWhitelist = parseStringList(job.regex_whitelist);
-  const regexBlacklist = parseStringList(job.regex_blacklist);
-
-  return {
-    keywordWhitelist: parseStringList(job.keyword_whitelist).map((keyword) => keyword.toLowerCase()),
-    keywordBlacklist: parseStringList(job.keyword_blacklist).map((keyword) => keyword.toLowerCase()),
-    regexWhitelist: compileRegexFilters(regexWhitelist),
-    regexBlacklist: compileRegexFilters(regexBlacklist),
-  };
-}
-
-function getMessageText(message: MessageLike) {
-  return (message.message ?? "").trim();
-}
-
-function matchesAnyKeyword(text: string, keywords: string[]) {
-  if (keywords.length === 0) {
-    return false;
-  }
-
-  const normalizedText = text.toLowerCase();
-  return keywords.some((keyword) => normalizedText.includes(keyword));
-}
-
-function matchesAnyRegex(text: string, patterns: RegExp[]) {
-  const matchText = text.slice(0, MAX_REGEX_TEXT_LENGTH);
-
-  return patterns.some((pattern) => {
-    pattern.lastIndex = 0;
-    return pattern.test(matchText);
-  });
-}
-
-function isMessageAllowedByTextFilter(message: MessageLike, filter: MessageTextFilter) {
-  const text = getMessageText(message);
-  if (matchesAnyKeyword(text, filter.keywordBlacklist) || matchesAnyRegex(text, filter.regexBlacklist)) {
-    return false;
-  }
-
-  const hasWhitelist = filter.keywordWhitelist.length > 0 || filter.regexWhitelist.length > 0;
-  if (!hasWhitelist) {
-    return true;
-  }
-
-  return matchesAnyKeyword(text, filter.keywordWhitelist) || matchesAnyRegex(text, filter.regexWhitelist);
-}
-
-function filterMessagesByTextFilter(messages: MessageLike[], filter: MessageTextFilter) {
-  const allowed: MessageLike[] = [];
-  const skipped: MessageLike[] = [];
-
-  for (const message of messages) {
-    if (isMessageAllowedByTextFilter(message, filter)) {
-      allowed.push(message);
-    } else {
-      skipped.push(message);
-    }
-  }
-
-  return { allowed, skipped };
-}
 
 function getMessageMediaType(message: MessageLike): AllowedMediaType {
   if (!message.media) {
@@ -755,7 +649,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
     await client.connect();
     const messageIds = buildMessageSequence(job);
     const mediaFilter = parseAllowedMediaTypes(job.allowed_media_types);
-    const textFilter = parseMessageTextFilter(job);
+    const textFilter = parseMessageTextFilterFromJob(job);
     const groupedMessagesCache = new Map<string, MessageLike[]>();
     const captionedSelectionCache = new Map<string, MessageLike | null>();
     const messageCache = new Map<number, MessageLike | null>();
