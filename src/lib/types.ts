@@ -4,9 +4,7 @@ export type AdminSessionPayload = {
 };
 
 export type JobStatus =
-  | "draft"
   | "pending"
-  | "claimed"
   | "running"
   | "paused"
   | "completed"

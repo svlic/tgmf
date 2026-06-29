@@ -5,7 +5,7 @@ export function jobStatusVariant(status: string): BadgeVariant {
     return "green";
   }
 
-  if (["running", "pending", "claimed"].includes(status)) {
+  if (["running", "pending"].includes(status)) {
     return "blue";
   }
 
