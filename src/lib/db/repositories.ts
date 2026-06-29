@@ -304,6 +304,8 @@ export const jobRepository = {
       throw new Error("Job not found");
     }
 
+    const updates = extras ?? {};
+
     db().prepare(
       `UPDATE sync_jobs SET status = ?, worker_id = ?, next_message_id = ?, processed_messages = ?,
        succeeded_messages = ?, skipped_messages = ?, failed_messages = ?, last_error_code = ?,
@@ -311,17 +313,17 @@ export const jobRepository = {
        WHERE id = ?`,
     ).run(
       status,
-      extras?.worker_id ?? existing.worker_id,
-      extras?.next_message_id ?? existing.next_message_id,
-      extras?.processed_messages ?? existing.processed_messages,
-      extras?.succeeded_messages ?? existing.succeeded_messages,
-      extras?.skipped_messages ?? existing.skipped_messages,
-      extras?.failed_messages ?? existing.failed_messages,
-      extras?.last_error_code ?? existing.last_error_code,
-      extras?.last_error_message ?? existing.last_error_message,
-      extras?.cancel_requested_at ?? existing.cancel_requested_at,
-      extras?.started_at ?? existing.started_at,
-      extras?.finished_at ?? existing.finished_at,
+      "worker_id" in updates ? updates.worker_id : existing.worker_id,
+      "next_message_id" in updates ? updates.next_message_id : existing.next_message_id,
+      "processed_messages" in updates ? updates.processed_messages : existing.processed_messages,
+      "succeeded_messages" in updates ? updates.succeeded_messages : existing.succeeded_messages,
+      "skipped_messages" in updates ? updates.skipped_messages : existing.skipped_messages,
+      "failed_messages" in updates ? updates.failed_messages : existing.failed_messages,
+      "last_error_code" in updates ? updates.last_error_code : existing.last_error_code,
+      "last_error_message" in updates ? updates.last_error_message : existing.last_error_message,
+      "cancel_requested_at" in updates ? updates.cancel_requested_at : existing.cancel_requested_at,
+      "started_at" in updates ? updates.started_at : existing.started_at,
+      "finished_at" in updates ? updates.finished_at : existing.finished_at,
       nowIso(),
       id,
     );
@@ -419,10 +421,24 @@ export const jobRepository = {
 };
 
 export const transferRecordRepository = {
-  listForJob(jobId: string) {
+  countForJob(jobId: string) {
+    const row = db()
+      .prepare(`SELECT COUNT(*) AS count FROM message_transfer_records WHERE job_id = ?`)
+      .get(jobId) as { count: number };
+    return row.count;
+  },
+
+  listLatestForJob(jobId: string, limit: number) {
     return db()
-      .prepare(`SELECT * FROM message_transfer_records WHERE job_id = ? ORDER BY source_message_id ASC, created_at ASC`)
-      .all(jobId) as MessageTransferRecordRow[];
+      .prepare(
+        `SELECT * FROM (
+          SELECT * FROM message_transfer_records
+          WHERE job_id = ?
+          ORDER BY source_message_id DESC, created_at DESC
+          LIMIT ?
+        ) ORDER BY source_message_id ASC, created_at ASC`,
+      )
+      .all(jobId, limit) as MessageTransferRecordRow[];
   },
 
   getByJobAndSourceMessageId(jobId: string, sourceMessageId: number) {

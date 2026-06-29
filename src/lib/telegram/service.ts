@@ -799,18 +799,23 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         messagesToForward = textFilteredMessages.allowed;
 
         if (job.mode === "copy") {
-          const currentMessageWasFiltered = filterSkippedMessages.find(({ message }) => message.id === messageId);
-          if (currentMessageWasFiltered?.message.id) {
+          filterSkippedMessages.forEach(({ message, reason }) => {
+            if (!message.id) {
+              return;
+            }
             transferRecordRepository.upsert({
               jobId: job.id,
-              sourceMessageId: currentMessageWasFiltered.message.id,
-              mediaGroupId: getGroupedIdKey(currentMessageWasFiltered.message),
+              sourceMessageId: message.id,
+              mediaGroupId: getGroupedIdKey(message),
               status: "skipped",
-              errorReason: currentMessageWasFiltered.reason,
+              errorReason: reason,
             });
+          });
+          const currentMessageWasFiltered = filterSkippedMessages.find(({ message }) => message.id === messageId);
+          if (currentMessageWasFiltered?.message.id) {
             jobRepository.recordProgress(job.id, {
               nextMessageId,
-              skippedIncrement: 1,
+              skippedIncrement: messagesToForward.length === 0 ? skippedByFilters : 0,
             });
             continue;
           }
@@ -887,9 +892,10 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             lastErrorMessage: undelivered.length > 0 ? missingTargetMessageErrorReason() : null,
           });
         } else {
-          const messageToCopy = messagesToForward.find(
-            (message): message is MessageLike & { id: number } => message.id === messageId,
+          const copyableMessages = messagesToForward.filter(
+            (message): message is MessageLike & { id: number } => typeof message.id === "number",
           );
+          const messageToCopy = copyableMessages.find((message) => message.id === messageId);
           if (!messageToCopy) {
             jobRepository.recordProgress(job.id, {
               nextMessageId,
@@ -897,58 +903,63 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             continue;
           }
 
-          const skippedCopyAlbumMessages = messagesToForward.filter(
-            (message): message is MessageLike & { id: number } => typeof message.id === "number" && message.id !== messageToCopy.id,
-          );
-          skippedCopyAlbumMessages.forEach((message) => {
-            transferRecordRepository.upsert({
-              jobId: job.id,
-              sourceMessageId: message.id,
-              mediaGroupId: getGroupedIdKey(message),
-              status: "skipped",
-              errorReason: "Skipped because copy mode only copies one album message",
-            });
-          });
-
-          const targetMessageId = await copyMessage(client, job, messageToCopy, (details) => {
-            onHeartbeat();
-            workerRepository.heartbeat(workerId, "running", job.id, {
-              ...details,
-              updatedAt: nowIso(),
-              pid: process.pid,
-            });
-          });
-          const copyOutcome = classifyCopyDelivery(targetMessageId);
-          if (copyOutcome.outcome === "sent") {
-            delayBeforeNextAttempt = true;
-            transferRecordRepository.upsert({
-              jobId: job.id,
-              sourceMessageId: messageToCopy.id,
-              targetMessageId: copyOutcome.targetMessageId,
-              mediaGroupId: getGroupedIdKey(messageToCopy),
-              status: "sent",
-            });
-            jobRepository.recordProgress(job.id, {
-              nextMessageId,
-              succeededIncrement: 1,
-              skippedIncrement: skippedCopyAlbumMessages.length,
-            });
-          } else {
-            transferRecordRepository.upsert({
-              jobId: job.id,
-              sourceMessageId: messageToCopy.id,
-              mediaGroupId: getGroupedIdKey(messageToCopy),
-              status: "failed",
-              errorReason: copyOutcome.errorReason,
-            });
-            jobRepository.recordProgress(job.id, {
-              nextMessageId,
-              failedIncrement: 1,
-              skippedIncrement: skippedCopyAlbumMessages.length,
-              lastErrorCode: "message_transfer_failed",
-              lastErrorMessage: copyOutcome.errorReason,
-            });
+          let copiedCount = 0;
+          let copyFailureCount = 0;
+          let lastCopyError: string | null = null;
+          for (const copyableMessage of copyableMessages) {
+            try {
+              const targetMessageId = await copyMessage(client, job, copyableMessage, (details) => {
+                onHeartbeat();
+                workerRepository.heartbeat(workerId, "running", job.id, {
+                  ...details,
+                  updatedAt: nowIso(),
+                  pid: process.pid,
+                });
+              });
+              const copyOutcome = classifyCopyDelivery(targetMessageId);
+              if (copyOutcome.outcome === "sent") {
+                copiedCount += 1;
+                delayBeforeNextAttempt = true;
+                transferRecordRepository.upsert({
+                  jobId: job.id,
+                  sourceMessageId: copyableMessage.id,
+                  targetMessageId: copyOutcome.targetMessageId,
+                  mediaGroupId: getGroupedIdKey(copyableMessage),
+                  status: "sent",
+                });
+              } else {
+                copyFailureCount += 1;
+                lastCopyError = copyOutcome.errorReason;
+                transferRecordRepository.upsert({
+                  jobId: job.id,
+                  sourceMessageId: copyableMessage.id,
+                  mediaGroupId: getGroupedIdKey(copyableMessage),
+                  status: "failed",
+                  errorReason: copyOutcome.errorReason,
+                });
+              }
+            } catch (copyError) {
+              const copyErrorMessage = safeErrorMessage(copyError);
+              copyFailureCount += 1;
+              lastCopyError = copyErrorMessage;
+              transferRecordRepository.upsert({
+                jobId: job.id,
+                sourceMessageId: copyableMessage.id,
+                mediaGroupId: getGroupedIdKey(copyableMessage),
+                status: "failed",
+                errorReason: copyErrorMessage,
+              });
+            }
           }
+
+          jobRepository.recordProgress(job.id, {
+            nextMessageId,
+            succeededIncrement: copiedCount,
+            failedIncrement: copyFailureCount,
+            skippedIncrement: skippedByFilters,
+            lastErrorCode: copyFailureCount > 0 ? "message_transfer_failed" : null,
+            lastErrorMessage: lastCopyError,
+          });
         }
       } catch (error) {
         flushAlreadyTransferredProgress(nextMessageId);
