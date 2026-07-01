@@ -6,11 +6,9 @@ import { getAdminSession } from "@/lib/auth";
 export default async function LoginPage() {
   const session = await getAdminSession();
   if (session?.authenticated) {
-    console.info("[admin-login] login page redirect", { authenticated: true, target: "/" });
     redirect("/");
   }
 
-  console.info("[admin-login] login page rendered", { authenticated: false });
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
       <Card className="w-full max-w-md">
