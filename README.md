@@ -93,8 +93,20 @@ docker compose logs -f web worker
 ## 当前限制
 
 - 当前设计为单机、单 Worker 模式。
-- `copy` 模式支持纯文本消息和单条媒体消息复制；相册媒体仍受下方限制约束。
-- 相册消息处理仍不完整：
-  - `captioned_only` 仅为基础实现
-  - `full_group` 仍需要更完整的分组媒体处理逻辑
+- `forward` 模式：相册会按 `groupedId` 拉取同组消息并整组转发（受任务 ID 区间与媒体/文本过滤约束）。
+- `copy` 模式：支持纯文本与单条媒体复制；**相册整组复制**尚未实现，`copy` 下遇到相册时仍按单条消息处理，可能无法完整还原整组相册。
+- 相册策略（仅作用于**相册/媒体组**内的消息选择，不影响非相册单条消息）：
+  - `full_group`：组内消息在过滤后一并参与转发/复制（`forward` 下为整组转发）。
+  - `captioned_only`：组内只处理带说明文字的那一条，同组其余条目记为跳过。
 - Telegram 登录流程中，等待验证码或两步验证确认时使用的临时 `phoneCodeHash` 和 Telegram 会话字符串会加密持久化到 SQLite；手机号仍按账号元数据保存，整体仍只适合当前单机部署模型。
+
+## 本地开发
+
+```bash
+npm install
+npm run dev          # Web
+npm run worker:dev   # Worker（读取 .env.local）
+npm run lint
+npm run typecheck
+npm test
+```

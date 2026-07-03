@@ -13,7 +13,7 @@ services:
 
   worker:
     build: .
-    command: node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts
+    command: npm run worker
     env_file:
       - .env
     environment:
