@@ -12,18 +12,7 @@ import {
   ACCOUNTS_POLL_INTERVAL_MS,
   type AccountsOverviewSnapshot,
 } from "@/lib/accounts-snapshots";
-
-function loginStateVariant(status: string) {
-  if (status === "ready") {
-    return "green" as const;
-  }
-
-  if (status === "failed") {
-    return "red" as const;
-  }
-
-  return "amber" as const;
-}
+import { loginStateVariant } from "@/lib/accounts-ui";
 
 type AccountsLiveListProps = {
   initial: AccountsOverviewSnapshot;
