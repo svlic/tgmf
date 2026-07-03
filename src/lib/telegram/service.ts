@@ -24,6 +24,7 @@ import {
   missingTargetMessageErrorReason,
   partitionForwardDeliveries,
 } from "@/lib/telegram/transfer-outcome";
+import { getTelegramFloodWaitSeconds, waitForTelegramFloodWindow } from "@/lib/telegram/flood-wait";
 
 export type StartLoginResult = {
   loginState: "awaiting_code";
@@ -939,6 +940,10 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
                 });
               }
             } catch (copyError) {
+              if (getTelegramFloodWaitSeconds(copyError) !== null) {
+                throw copyError;
+              }
+
               const copyErrorMessage = safeErrorMessage(copyError);
               copyFailureCount += 1;
               lastCopyError = copyErrorMessage;
@@ -962,6 +967,19 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           });
         }
       } catch (error) {
+        const floodWaitSeconds = getTelegramFloodWaitSeconds(error);
+        if (floodWaitSeconds !== null) {
+          const errorMessage = safeErrorMessage(error);
+          jobRepository.recordProgress(job.id, {
+            nextMessageId: messageId,
+            lastErrorCode: "telegram_flood_wait",
+            lastErrorMessage: errorMessage,
+          });
+          await waitForTelegramFloodWindow(floodWaitSeconds, onHeartbeat);
+          index -= 1;
+          continue;
+        }
+
         flushAlreadyTransferredProgress(nextMessageId);
         const errorMessage = safeErrorMessage(error);
         transferRecordRepository.upsert({

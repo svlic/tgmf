@@ -1,0 +1,52 @@
+import { describe, expect, it, vi } from "vitest";
+import { getTelegramFloodWaitSeconds, waitForTelegramFloodWindow } from "@/lib/telegram/flood-wait";
+
+describe("getTelegramFloodWaitSeconds", () => {
+  it("returns seconds from error object with errorCode 420 and seconds", () => {
+    const err = {
+      errorCode: 420,
+      seconds: 120,
+      message: "FLOOD_WAIT_120",
+    };
+    expect(getTelegramFloodWaitSeconds(err)).toBe(120);
+  });
+
+  it("returns seconds from error message containing FLOOD_WAIT_ pattern", () => {
+    const err = new Error("RPCError: FLOOD_WAIT_300: A wait of 300 seconds is required");
+    expect(getTelegramFloodWaitSeconds(err)).toBe(300);
+  });
+
+  it("returns seconds from error message containing ForwardMessages and wait pattern", () => {
+    const err = new Error("A wait of 45 seconds is required (caused by ForwardMessagesRequest)");
+    expect(getTelegramFloodWaitSeconds(err)).toBe(45);
+  });
+
+  it("returns null for non-flood errors", () => {
+    const err = new Error("Some other error");
+    expect(getTelegramFloodWaitSeconds(err)).toBeNull();
+  });
+
+  it("returns null for null or undefined", () => {
+    expect(getTelegramFloodWaitSeconds(null)).toBeNull();
+    expect(getTelegramFloodWaitSeconds(undefined)).toBeNull();
+  });
+});
+
+describe("waitForTelegramFloodWindow", () => {
+  it("keeps heartbeats active while waiting for Telegram's required flood window", async () => {
+    vi.useFakeTimers();
+    const onHeartbeat = vi.fn();
+
+    try {
+      const waitPromise = waitForTelegramFloodWindow(61, onHeartbeat);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await waitPromise;
+
+      expect(onHeartbeat).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
