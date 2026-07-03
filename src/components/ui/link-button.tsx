@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { buttonVariants, type ButtonSize, type ButtonVariant } from "@/components/ui/button-variants";
-import { cn } from "@/lib/utils";
 
 type LinkButtonProps = {
   href: string;
@@ -13,7 +12,7 @@ type LinkButtonProps = {
 
 export function LinkButton({ href, variant = "default", size = "default", className, children }: LinkButtonProps) {
   return (
-    <Link href={href} className={cn(buttonVariants({ variant, size }), className)}>
+    <Link href={href} className={buttonVariants({ variant, size, className })}>
       {children}
     </Link>
   );

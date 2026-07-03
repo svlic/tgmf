@@ -23,22 +23,8 @@ import {
   type JobDetailSnapshot,
 } from "@/lib/jobs-snapshots";
 import { jobStatusVariant } from "@/lib/job-ui";
-import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
+import { normalizeAllowedMediaType } from "@/lib/media-types";
 import type { AllowedMediaType } from "@/lib/types";
-
-function normalizeAllowedMediaType(value: unknown): AllowedMediaType | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  if (ALLOWED_MEDIA_TYPES.includes(value as AllowedMediaType)) {
-    return value as AllowedMediaType;
-  }
-  if (["video_note", "sticker", "animation"].includes(value)) {
-    return "other";
-  }
-
-  return null;
-}
 
 function parseJsonStringArray(value: string) {
   try {
