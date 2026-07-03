@@ -12,7 +12,7 @@ import {
   jobRepository,
   workerRepository,
 } from "@/lib/db/repositories";
-import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
+import { normalizeAllowedMediaType } from "@/lib/media-types";
 import type { AllowedMediaType, DialogCacheRow, SyncJobRow } from "@/lib/types";
 import { nowIso, safeErrorMessage, sleep } from "@/lib/utils";
 import {
@@ -70,6 +70,10 @@ type CopyPhaseDetails = {
 };
 
 type CopyPhaseCallback = (details: CopyPhaseDetails) => void;
+
+export function resolveSyncJobFinalStatus(failedMessages: number): "completed" | "failed" {
+  return failedMessages > 0 ? "failed" : "completed";
+}
 
 function getActiveLoginSession(accountId: string) {
   return telegramLoginSessionRepository.getActive(accountId);
@@ -262,20 +266,6 @@ function getDocumentFromMessage(message: MessageLike) {
 
 function isPhotoMessage(message: MessageLike) {
   return message.media instanceof Api.MessageMediaPhoto;
-}
-
-function normalizeAllowedMediaType(value: unknown): AllowedMediaType | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  if (ALLOWED_MEDIA_TYPES.includes(value as AllowedMediaType)) {
-    return value as AllowedMediaType;
-  }
-  if (["video_note", "sticker", "animation"].includes(value)) {
-    return "other";
-  }
-
-  return null;
 }
 
 function parseAllowedMediaTypes(value: string) {
@@ -998,7 +988,14 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
     }
 
     flushAlreadyTransferredProgress(null);
-    jobRepository.setStatus(job.id, "completed", {
+    const latestJob = jobRepository.getById(job.id);
+    if (!latestJob) {
+      throw new Error("Job no longer exists");
+    }
+
+    const finalStatus = resolveSyncJobFinalStatus(latestJob.failed_messages);
+
+    jobRepository.setStatus(job.id, finalStatus, {
       worker_id: workerId,
       next_message_id: null,
       finished_at: nowIso(),

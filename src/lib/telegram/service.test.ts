@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { getTelegramFloodWaitSeconds, waitForTelegramFloodWindow } from "@/lib/telegram/flood-wait";
+import { resolveSyncJobFinalStatus } from "@/lib/telegram/service";
+
+describe("resolveSyncJobFinalStatus", () => {
+  it("returns completed when no messages failed", () => {
+    expect(resolveSyncJobFinalStatus(0)).toBe("completed");
+  });
+
+  it("returns failed when at least one message failed", () => {
+    expect(resolveSyncJobFinalStatus(1)).toBe("failed");
+    expect(resolveSyncJobFinalStatus(3)).toBe("failed");
+  });
+});
 
 describe("getTelegramFloodWaitSeconds", () => {
   it("returns seconds from error object with errorCode 420 and seconds", () => {
