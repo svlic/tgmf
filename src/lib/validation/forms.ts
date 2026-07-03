@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_DELAY_SECONDS } from "@/lib/constants";
+import { MAX_FILTER_ITEMS } from "@/lib/filter-limits";
 import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
 
 export const loginSchema = z.object({
@@ -24,8 +25,6 @@ export const verifyCodeSchema = z.object({
 export const verifyPasswordSchema = z.object({
   password: z.string().min(1).max(255),
 });
-
-const MAX_FILTER_ITEMS = 50;
 
 function hasNestedQuantifier(pattern: string) {
   return /\([^)]*[+*][^)]*\)\s*(?:[+*]|\{\d*,?\d*\})/.test(pattern);

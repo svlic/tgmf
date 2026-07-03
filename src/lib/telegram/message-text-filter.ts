@@ -1,6 +1,7 @@
+import { MAX_FILTER_ITEMS } from "@/lib/filter-limits";
 import type { SyncJobRow } from "@/lib/types";
 
-export const MAX_FILTER_ITEMS = 50;
+export { MAX_FILTER_ITEMS } from "@/lib/filter-limits";
 export const MAX_REGEX_TEXT_LENGTH = 4096;
 
 export type MessageTextFilter = {
