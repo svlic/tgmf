@@ -39,9 +39,9 @@ describe("classifyCopyDelivery", () => {
     expect(classifyCopyDelivery(42)).toEqual({ outcome: "sent", targetMessageId: 42 });
   });
 
-  it("classifies a missing target id as failed", () => {
+  it("classifies a missing target id as skipped", () => {
     expect(classifyCopyDelivery(null)).toEqual({
-      outcome: "failed",
+      outcome: "skipped",
       errorReason: missingTargetMessageErrorReason(),
     });
   });
