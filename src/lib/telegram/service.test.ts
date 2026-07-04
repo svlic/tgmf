@@ -4,7 +4,31 @@ import {
   type CaptionSelectableMessage,
 } from "@/lib/telegram/album-policy";
 import { getTelegramFloodWaitSeconds, waitForTelegramFloodWindow } from "@/lib/telegram/flood-wait";
-import { resolveSyncJobFinalStatus } from "@/lib/telegram/service";
+import { filterCopyMessagesPendingTransfer, resolveSyncJobFinalStatus } from "@/lib/telegram/service";
+
+describe("filterCopyMessagesPendingTransfer", () => {
+  it("excludes album members that already reached a terminal transfer status", () => {
+    const messages = [{ id: 10 }, { id: 11 }, { id: 12 }];
+    const records = new Map<number, { status: string }>([
+      [10, { status: "sent" }],
+      [11, { status: "failed" }],
+      [12, { status: "skipped" }],
+    ]);
+
+    const pending = filterCopyMessagesPendingTransfer(messages, (id) => records.get(id) ?? null);
+
+    expect(pending).toEqual([{ id: 11 }]);
+  });
+
+  it("keeps messages with no record or non-terminal status", () => {
+    const messages = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const records = new Map<number, { status: string }>([[2, { status: "failed" }]]);
+
+    const pending = filterCopyMessagesPendingTransfer(messages, (id) => records.get(id) ?? null);
+
+    expect(pending).toEqual(messages);
+  });
+});
 
 describe("resolveSyncJobFinalStatus", () => {
   it("returns completed when no messages failed", () => {

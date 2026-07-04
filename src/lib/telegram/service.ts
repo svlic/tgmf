@@ -76,6 +76,18 @@ export function resolveSyncJobFinalStatus(failedMessages: number): "completed" |
   return failedMessages > 0 ? "failed" : "completed";
 }
 
+const TERMINAL_TRANSFER_STATUSES = new Set(["sent", "skipped"]);
+
+export function filterCopyMessagesPendingTransfer<T extends { id: number }>(
+  messages: readonly T[],
+  getTransferRecord: (sourceMessageId: number) => { status: string } | null,
+): T[] {
+  return messages.filter((message) => {
+    const existing = getTransferRecord(message.id);
+    return !existing || !TERMINAL_TRANSFER_STATUSES.has(existing.status);
+  });
+}
+
 function getActiveLoginSession(accountId: string) {
   return telegramLoginSessionRepository.getActive(accountId);
 }
@@ -914,11 +926,15 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             continue;
           }
 
+          const pendingCopyMessages = filterCopyMessagesPendingTransfer(copyableMessages, (sourceMessageId) =>
+            transferRecordRepository.getByJobAndSourceMessageId(job.id, sourceMessageId),
+          );
+
           let copiedCount = 0;
           let copyFailureCount = 0;
           let copySkippedCount = 0;
           let lastCopyError: string | null = null;
-          for (const copyableMessage of copyableMessages) {
+          for (const copyableMessage of pendingCopyMessages) {
             try {
               const targetMessageId = await copyMessage(client, job, copyableMessage, (details) => {
                 onHeartbeat();
