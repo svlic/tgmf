@@ -2,8 +2,6 @@ import { accountRepository } from "@/lib/db/repositories";
 import type { AccountsOverviewSnapshot, AccountListItemSnapshot } from "@/lib/accounts-snapshots";
 import type { TelegramAccountRow } from "@/lib/types";
 
-export type { AccountsOverviewSnapshot, AccountListItemSnapshot } from "@/lib/accounts-snapshots";
-
 const POLLING_LOGIN_STATES: readonly TelegramAccountRow["login_state"][] = [
   "awaiting_code",
   "awaiting_password",

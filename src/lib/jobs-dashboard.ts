@@ -9,11 +9,9 @@ import type {
 } from "@/lib/jobs-snapshots";
 import type { JobStatus, SyncJobRow, TelegramAccountRow } from "@/lib/types";
 
-export type { JobDetailSnapshot, JobListItemSnapshot, JobsOverviewSnapshot } from "@/lib/jobs-snapshots";
-
-export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["pending", "running", "paused", "failed"];
-export const QUEUED_JOB_STATUSES: readonly JobStatus[] = ["pending", "paused"];
-export const REFRESHING_JOB_STATUSES: readonly JobStatus[] = ["pending", "running"];
+const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["pending", "running", "paused", "failed"];
+const QUEUED_JOB_STATUSES: readonly JobStatus[] = ["pending", "paused"];
+const REFRESHING_JOB_STATUSES: readonly JobStatus[] = ["pending", "running"];
 
 function toJobListItem(job: SyncJobRow, account: TelegramAccountRow | null): JobListItemSnapshot {
   return {
