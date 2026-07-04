@@ -19,6 +19,7 @@ import {
   filterMessagesByTextFilter,
   parseMessageTextFilterFromJob,
 } from "@/lib/telegram/message-text-filter";
+import { partitionCaptionedAlbumMessages } from "@/lib/telegram/album-policy";
 import {
   classifyCopyDelivery,
   missingTargetMessageErrorReason,
@@ -246,10 +247,6 @@ function buildMessageSequence(job: SyncJobRow) {
     }
   }
   return values;
-}
-
-function selectCaptionedMessage(messages: MessageLike[]) {
-  return messages.find((message) => typeof message.message === "string" && message.message.trim().length > 0) ?? null;
 }
 
 function getGroupedIdKey(message: MessageLike) {
@@ -642,7 +639,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
     const mediaFilter = parseAllowedMediaTypes(job.allowed_media_types);
     const textFilter = parseMessageTextFilterFromJob(job);
     const groupedMessagesCache = new Map<string, MessageLike[]>();
-    const captionedSelectionCache = new Map<string, MessageLike | null>();
+    const captionedSelectionCache = new Map<string, ReturnType<typeof partitionCaptionedAlbumMessages<MessageLike>>>();
     const messageCache = new Map<number, MessageLike | null>();
     const messagePrefetchWindow = 50;
     const alreadyTransferredFlushThreshold = 50;
@@ -757,27 +754,51 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           });
         }
 
+        let skippedByAlbumPolicy = 0;
         if (job.album_strategy === "captioned_only" && groupedIdKey) {
-          const cachedSelected = captionedSelectionCache.get(groupedIdKey);
-          const selected = cachedSelected === undefined ? selectCaptionedMessage(messagesToForward) : cachedSelected;
-          if (cachedSelected === undefined) {
-            captionedSelectionCache.set(groupedIdKey, selected);
+          const cachedPartition = captionedSelectionCache.get(groupedIdKey);
+          const partition = cachedPartition ?? partitionCaptionedAlbumMessages(messagesToForward);
+          if (!cachedPartition) {
+            captionedSelectionCache.set(groupedIdKey, partition);
           }
-          if (!selected || selected.id !== sourceMessage.id) {
+          if (!partition.selected) {
+            partition.skipped.forEach((message) => {
+              if (!message.id) {
+                return;
+              }
+              skippedByAlbumPolicy += 1;
+              transferRecordRepository.upsert({
+                jobId: job.id,
+                sourceMessageId: message.id,
+                mediaGroupId: groupedIdKey,
+                status: "skipped",
+                errorReason: "Skipped by captioned_only policy",
+              });
+            });
+            jobRepository.recordProgress(job.id, {
+              nextMessageId,
+              skippedIncrement: skippedByAlbumPolicy,
+            });
+            continue;
+          }
+          if (partition.selected.id !== sourceMessage.id) {
+            continue;
+          }
+
+          partition.skipped.forEach((message) => {
+            if (!message.id) {
+              return;
+            }
+            skippedByAlbumPolicy += 1;
             transferRecordRepository.upsert({
               jobId: job.id,
-              sourceMessageId: sourceMessage.id,
+              sourceMessageId: message.id,
               mediaGroupId: groupedIdKey,
               status: "skipped",
               errorReason: "Skipped by captioned_only policy",
             });
-            jobRepository.recordProgress(job.id, {
-              nextMessageId,
-              skippedIncrement: 1,
-            });
-            continue;
-          }
-          messagesToForward = [selected];
+          });
+          messagesToForward = [partition.selected];
         }
 
         const mediaFilteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
@@ -806,7 +827,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           if (currentMessageWasFiltered?.message.id) {
             jobRepository.recordProgress(job.id, {
               nextMessageId,
-              skippedIncrement: messagesToForward.length === 0 ? skippedByFilters : 0,
+              skippedIncrement: skippedByAlbumPolicy + (messagesToForward.length === 0 ? skippedByFilters : 0),
             });
             continue;
           }
@@ -826,7 +847,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           if (messagesToForward.length === 0) {
             jobRepository.recordProgress(job.id, {
               nextMessageId,
-              skippedIncrement: skippedByFilters,
+              skippedIncrement: skippedByAlbumPolicy + skippedByFilters,
             });
             continue;
           }
@@ -858,7 +879,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               jobId: job.id,
               sourceMessageId,
               mediaGroupId: sourceMessage ? getGroupedIdKey(sourceMessage) : null,
-              status: "failed",
+              status: "skipped",
               errorReason: missingTargetMessageErrorReason(),
             });
           });
@@ -877,9 +898,8 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           jobRepository.recordProgress(job.id, {
             nextMessageId,
             succeededIncrement: delivered.length,
-            failedIncrement: undelivered.length,
-            skippedIncrement: skippedByFilters + forwardResult.skipped.length,
-            lastErrorCode: undelivered.length > 0 ? "message_transfer_failed" : null,
+            skippedIncrement: skippedByAlbumPolicy + skippedByFilters + forwardResult.skipped.length + undelivered.length,
+            lastErrorCode: undelivered.length > 0 ? "message_transfer_warn" : null,
             lastErrorMessage: undelivered.length > 0 ? missingTargetMessageErrorReason() : null,
           });
         } else {
@@ -896,6 +916,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
           let copiedCount = 0;
           let copyFailureCount = 0;
+          let copySkippedCount = 0;
           let lastCopyError: string | null = null;
           for (const copyableMessage of copyableMessages) {
             try {
@@ -919,13 +940,12 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
                   status: "sent",
                 });
               } else {
-                copyFailureCount += 1;
-                lastCopyError = copyOutcome.errorReason;
+                copySkippedCount += 1;
                 transferRecordRepository.upsert({
                   jobId: job.id,
                   sourceMessageId: copyableMessage.id,
                   mediaGroupId: getGroupedIdKey(copyableMessage),
-                  status: "failed",
+                  status: "skipped",
                   errorReason: copyOutcome.errorReason,
                 });
               }
@@ -951,7 +971,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             nextMessageId,
             succeededIncrement: copiedCount,
             failedIncrement: copyFailureCount,
-            skippedIncrement: skippedByFilters,
+            skippedIncrement: skippedByAlbumPolicy + skippedByFilters + copySkippedCount,
             lastErrorCode: copyFailureCount > 0 ? "message_transfer_failed" : null,
             lastErrorMessage: lastCopyError,
           });

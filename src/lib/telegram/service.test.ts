@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  partitionCaptionedAlbumMessages,
+  type CaptionSelectableMessage,
+} from "@/lib/telegram/album-policy";
 import { getTelegramFloodWaitSeconds, waitForTelegramFloodWindow } from "@/lib/telegram/flood-wait";
 import { resolveSyncJobFinalStatus } from "@/lib/telegram/service";
 
@@ -10,6 +14,33 @@ describe("resolveSyncJobFinalStatus", () => {
   it("returns failed when at least one message failed", () => {
     expect(resolveSyncJobFinalStatus(1)).toBe("failed");
     expect(resolveSyncJobFinalStatus(3)).toBe("failed");
+  });
+});
+
+describe("partitionCaptionedAlbumMessages", () => {
+  it("selects the captioned album message and marks the rest as skipped", () => {
+    const messages: CaptionSelectableMessage[] = [
+      { id: 10, message: "" },
+      { id: 11, message: "caption" },
+      { id: 12 },
+    ];
+
+    const result = partitionCaptionedAlbumMessages(messages);
+
+    expect(result.selected).toEqual(messages[1]);
+    expect(result.skipped).toEqual([messages[0], messages[2]]);
+  });
+
+  it("skips the entire album when no message has a caption", () => {
+    const messages: CaptionSelectableMessage[] = [
+      { id: 20 },
+      { id: 21, message: "   " },
+    ];
+
+    const result = partitionCaptionedAlbumMessages(messages);
+
+    expect(result.selected).toBeNull();
+    expect(result.skipped).toEqual(messages);
   });
 });
 
