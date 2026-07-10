@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker": "node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts",
-    "worker:dev": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.worker.json worker/index.ts"
+    "worker": "tsx --tsconfig tsconfig.worker.json worker/index.ts",
+    "worker:dev": "tsx --env-file=.env.local --tsconfig tsconfig.worker.json worker/index.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
