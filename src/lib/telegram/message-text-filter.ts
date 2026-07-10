@@ -52,18 +52,6 @@ function compileRegexFilters(patterns: string[]) {
   return filters;
 }
 
-export function parseMessageTextFilterFromJob(job: SyncJobRow): MessageTextFilter {
-  const regexWhitelist = parseStringList(job.regex_whitelist);
-  const regexBlacklist = parseStringList(job.regex_blacklist);
-
-  return {
-    keywordWhitelist: parseStringList(job.keyword_whitelist).map((keyword) => keyword.toLowerCase()),
-    keywordBlacklist: parseStringList(job.keyword_blacklist).map((keyword) => keyword.toLowerCase()),
-    regexWhitelist: compileRegexFilters(regexWhitelist),
-    regexBlacklist: compileRegexFilters(regexBlacklist),
-  };
-}
-
 export function parseMessageTextFilterFromLists(input: {
   keywordWhitelist: string[];
   keywordBlacklist: string[];
@@ -76,6 +64,15 @@ export function parseMessageTextFilterFromLists(input: {
     regexWhitelist: compileRegexFilters(input.regexWhitelist),
     regexBlacklist: compileRegexFilters(input.regexBlacklist),
   };
+}
+
+export function parseMessageTextFilterFromJob(job: SyncJobRow): MessageTextFilter {
+  return parseMessageTextFilterFromLists({
+    keywordWhitelist: parseStringList(job.keyword_whitelist),
+    keywordBlacklist: parseStringList(job.keyword_blacklist),
+    regexWhitelist: parseStringList(job.regex_whitelist),
+    regexBlacklist: parseStringList(job.regex_blacklist),
+  });
 }
 
 function getMessageText(message: TextFilterableMessage) {
@@ -100,7 +97,7 @@ function matchesAnyRegex(text: string, patterns: RegExp[]) {
   });
 }
 
-export function isMessageAllowedByTextFilter(message: TextFilterableMessage, filter: MessageTextFilter) {
+function isMessageAllowedByTextFilter(message: TextFilterableMessage, filter: MessageTextFilter) {
   const text = getMessageText(message);
   if (matchesAnyKeyword(text, filter.keywordBlacklist) || matchesAnyRegex(text, filter.regexBlacklist)) {
     return false;
