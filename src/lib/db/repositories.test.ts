@@ -1,0 +1,202 @@
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { WORKER_HEARTBEAT_STALE_MS } from "@/lib/constants";
+
+const databasePath = join(tmpdir(), `tgmf-account-flood-wait-${process.pid}.db`);
+process.env.DATABASE_URL = databasePath;
+
+const { getDb } = await import("@/lib/db/client");
+const { accountRepository, jobRepository, workerRepository } = await import("@/lib/db/repositories");
+
+function createJob(accountId: string) {
+  return jobRepository.create({
+    accountId,
+    sourceChannelRef: "source",
+    targetChannelRef: "target",
+    startMessageId: 1,
+    endMessageId: 1,
+    jobOrder: "asc",
+    mode: "forward",
+    albumStrategy: "full_group",
+  });
+}
+
+function createReadyAccountAndJob(label: string, phoneNumber: string) {
+  const account = accountRepository.create({ label, phoneNumber });
+  if (!account) {
+    throw new Error("Failed to create test account");
+  }
+  const job = createJob(account.id);
+  if (!job) {
+    throw new Error("Failed to create test job");
+  }
+  return { account, job };
+}
+
+beforeEach(() => {
+  getDb().exec("DELETE FROM sync_jobs; DELETE FROM telegram_accounts; DELETE FROM worker_heartbeats;");
+});
+
+afterAll(() => {
+  getDb().close();
+  rmSync(databasePath, { force: true });
+});
+
+describe("account-scoped Telegram flood waits", () => {
+  it("claims another account's job while the oldest account is cooling down", () => {
+    const coolingAccount = accountRepository.create({ label: "cooling", phoneNumber: "+10000000001" });
+    const readyAccount = accountRepository.create({ label: "ready", phoneNumber: "+10000000002" });
+    if (!coolingAccount || !readyAccount) {
+      throw new Error("Failed to create test accounts");
+    }
+    const coolingJob = createJob(coolingAccount.id);
+    const secondCoolingJob = createJob(coolingAccount.id);
+    const readyJob = createJob(readyAccount.id);
+    if (!coolingJob || !secondCoolingJob || !readyJob) {
+      throw new Error("Failed to create test jobs");
+    }
+    jobRepository.setStatus(coolingJob.id, "running", { worker_id: "worker_flooded" });
+
+    jobRepository.deferForFloodWait({
+      jobId: coolingJob.id,
+      accountId: coolingAccount.id,
+      workerId: "worker_flooded",
+      waitSeconds: 60,
+      errorMessage: "FLOOD_WAIT_60",
+    });
+
+    const claimed = jobRepository.claimNext("worker_test");
+
+    expect(claimed?.id).toBe(readyJob.id);
+    expect(jobRepository.getById(coolingJob.id)).toMatchObject({
+      status: "pending",
+      worker_id: null,
+      last_error_code: "telegram_flood_wait",
+      last_error_message: "FLOOD_WAIT_60",
+    });
+    expect(jobRepository.getById(secondCoolingJob.id)?.status).toBe("pending");
+    expect(accountRepository.getById(coolingAccount.id)?.flood_wait_until).not.toBeNull();
+    expect(
+      jobRepository.failIfRunningByWorker({
+        jobId: coolingJob.id,
+        workerId: "worker_flooded",
+        errorMessage: "disconnect failed",
+      }),
+    ).toBe(false);
+    expect(jobRepository.getById(coolingJob.id)?.status).toBe("pending");
+
+    getDb()
+      .prepare("UPDATE telegram_accounts SET flood_wait_until = ? WHERE id = ?")
+      .run(new Date(Date.now() - 1_000).toISOString(), coolingAccount.id);
+
+    expect(jobRepository.claimNext("worker_after_wait")?.account_id).toBe(coolingAccount.id);
+  });
+
+  it("does not defer a job after its worker loses ownership", () => {
+    const account = accountRepository.create({ label: "paused", phoneNumber: "+10000000003" });
+    if (!account) {
+      throw new Error("Failed to create test account");
+    }
+    const job = createJob(account.id);
+    if (!job) {
+      throw new Error("Failed to create test job");
+    }
+    jobRepository.setStatus(job.id, "paused", { worker_id: null });
+
+    const result = jobRepository.deferForFloodWait({
+      jobId: job.id,
+      accountId: account.id,
+      workerId: "stale_worker",
+      waitSeconds: 60,
+      errorMessage: "FLOOD_WAIT_60",
+    });
+
+    expect(result).toBe(false);
+    expect(jobRepository.getById(job.id)).toMatchObject({ status: "paused", worker_id: null });
+    expect(accountRepository.getById(account.id)?.flood_wait_until).toBeNull();
+  });
+
+  it("does not cool a different account for a running job", () => {
+    const jobAccount = accountRepository.create({ label: "job", phoneNumber: "+10000000004" });
+    const otherAccount = accountRepository.create({ label: "other", phoneNumber: "+10000000005" });
+    if (!jobAccount || !otherAccount) {
+      throw new Error("Failed to create test accounts");
+    }
+    const job = createJob(jobAccount.id);
+    if (!job) {
+      throw new Error("Failed to create test job");
+    }
+    jobRepository.setStatus(job.id, "running", { worker_id: "worker_owner" });
+
+    const result = jobRepository.deferForFloodWait({
+      jobId: job.id,
+      accountId: otherAccount.id,
+      workerId: "worker_owner",
+      waitSeconds: 60,
+      errorMessage: "FLOOD_WAIT_60",
+    });
+
+    expect(result).toBe(false);
+    expect(jobRepository.getById(job.id)).toMatchObject({ status: "running", worker_id: "worker_owner" });
+    expect(accountRepository.getById(jobAccount.id)?.flood_wait_until).toBeNull();
+    expect(accountRepository.getById(otherAccount.id)?.flood_wait_until).toBeNull();
+  });
+});
+
+describe("stale running job reclaim", () => {
+  it("reclaims a running job when the owning worker has no heartbeat", () => {
+    const { job } = createReadyAccountAndJob("orphan", "+10000000011");
+    jobRepository.setStatus(job.id, "running", { worker_id: "dead_worker" });
+
+    const claimed = jobRepository.claimNext("survivor");
+
+    expect(claimed?.id).toBe(job.id);
+    expect(claimed).toMatchObject({
+      status: "running",
+      worker_id: "survivor",
+      last_error_code: "worker_stale_reclaimed",
+    });
+  });
+
+  it("does not reclaim a running job while the owning worker heartbeat is fresh", () => {
+    const { job } = createReadyAccountAndJob("live", "+10000000012");
+    jobRepository.setStatus(job.id, "running", { worker_id: "live_worker" });
+    workerRepository.heartbeat("live_worker", "running", job.id);
+
+    const claimed = jobRepository.claimNext("other_worker");
+
+    expect(claimed).toBeNull();
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      status: "running",
+      worker_id: "live_worker",
+    });
+  });
+
+  it("reclaims a running job when the owning worker heartbeat is older than the lease", () => {
+    const { job } = createReadyAccountAndJob("expired", "+10000000013");
+    jobRepository.setStatus(job.id, "running", { worker_id: "stale_worker" });
+    workerRepository.heartbeat("stale_worker", "running", job.id);
+    getDb()
+      .prepare("UPDATE worker_heartbeats SET heartbeat_at = ? WHERE worker_id = ?")
+      .run(new Date(Date.now() - WORKER_HEARTBEAT_STALE_MS - 1_000).toISOString(), "stale_worker");
+
+    const claimed = jobRepository.claimNext("survivor");
+
+    expect(claimed?.id).toBe(job.id);
+    expect(claimed?.worker_id).toBe("survivor");
+    expect(jobRepository.getById(job.id)?.last_error_code).toBe("worker_stale_reclaimed");
+  });
+
+  it("reclaims a running job when the owning worker marked itself stale", () => {
+    const { job } = createReadyAccountAndJob("shutdown", "+10000000014");
+    jobRepository.setStatus(job.id, "running", { worker_id: "shutdown_worker" });
+    workerRepository.heartbeat("shutdown_worker", "stale", null, { phase: "crashed" });
+
+    const claimed = jobRepository.claimNext("survivor");
+
+    expect(claimed?.id).toBe(job.id);
+    expect(claimed?.worker_id).toBe("survivor");
+  });
+});

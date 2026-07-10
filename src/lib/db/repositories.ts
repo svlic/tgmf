@@ -1,5 +1,10 @@
 import { getDb } from "@/lib/db/client";
-import { DEFAULT_DELAY_SECONDS, LOGIN_WINDOW_MINUTES, MAX_LOGIN_ATTEMPTS } from "@/lib/constants";
+import {
+  DEFAULT_DELAY_SECONDS,
+  LOGIN_WINDOW_MINUTES,
+  MAX_LOGIN_ATTEMPTS,
+  WORKER_HEARTBEAT_STALE_MS,
+} from "@/lib/constants";
 import { encryptString, decryptString } from "@/lib/crypto";
 import type {
   AllowedMediaType,
@@ -41,17 +46,13 @@ function db() {
   return getDb();
 }
 
-function mapAccount(row: TelegramAccountRow | undefined) {
-  return row ?? null;
-}
-
 export const accountRepository = {
   list(): TelegramAccountRow[] {
     return db().prepare(`SELECT * FROM telegram_accounts ORDER BY updated_at DESC`).all() as TelegramAccountRow[];
   },
   getById(id: string) {
-    return mapAccount(
-      db().prepare(`SELECT * FROM telegram_accounts WHERE id = ?`).get(id) as TelegramAccountRow | undefined,
+    return (
+      (db().prepare(`SELECT * FROM telegram_accounts WHERE id = ?`).get(id) as TelegramAccountRow | undefined) ?? null
     );
   },
   create(input: AccountInput) {
@@ -87,6 +88,10 @@ export const accountRepository = {
       id,
     );
     return this.getById(id);
+  },
+  delete(id: string) {
+    const result = db().prepare(`DELETE FROM telegram_accounts WHERE id = ?`).run(id);
+    return result.changes > 0;
   },
   saveSession(id: string, session: string, loginState: TelegramAccountRow["login_state"], telegramUserId?: string | null) {
     db().prepare(
@@ -352,27 +357,102 @@ export const jobRepository = {
     });
   },
   claimNext(workerId: string) {
-    const candidate = db().prepare(`SELECT id FROM sync_jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1`).get() as
-      | { id: string }
-      | undefined;
-    if (!candidate) {
-      return null;
-    }
+    return db().transaction(() => {
+      const now = nowIso();
+      const staleBefore = new Date(Date.now() - WORKER_HEARTBEAT_STALE_MS).toISOString();
 
-    const startedAt = nowIso();
-    const result = db()
-      .prepare(
+      db()
+        .prepare(
+          `UPDATE sync_jobs
+           SET status = 'pending',
+               worker_id = NULL,
+               last_error_code = 'worker_stale_reclaimed',
+               last_error_message = 'Worker lease expired; job reclaimed',
+               updated_at = ?
+           WHERE status = 'running'
+             AND (
+               worker_id IS NULL
+               OR NOT EXISTS (
+                 SELECT 1 FROM worker_heartbeats wh
+                 WHERE wh.worker_id = sync_jobs.worker_id
+                   AND wh.status != 'stale'
+                   AND wh.heartbeat_at >= ?
+               )
+             )`,
+        )
+        .run(now, staleBefore);
+
+      const candidate = db()
+        .prepare(
+          `SELECT sync_jobs.id
+           FROM sync_jobs
+           JOIN telegram_accounts ON telegram_accounts.id = sync_jobs.account_id
+           WHERE sync_jobs.status = 'pending'
+             AND (telegram_accounts.flood_wait_until IS NULL OR telegram_accounts.flood_wait_until <= ?)
+           ORDER BY sync_jobs.created_at ASC
+           LIMIT 1`,
+        )
+        .get(now) as { id: string } | undefined;
+      if (!candidate) {
+        return null;
+      }
+
+      const result = db()
+        .prepare(
+          `UPDATE sync_jobs
+           SET status = 'running', worker_id = ?, started_at = COALESCE(started_at, ?), updated_at = ?
+           WHERE id = ? AND status = 'pending'`,
+        )
+        .run(workerId, now, now, candidate.id);
+
+      if (result.changes === 0) {
+        return null;
+      }
+
+      return this.getById(candidate.id);
+    })();
+  },
+  failIfRunningByWorker(input: { jobId: string; workerId: string; errorMessage: string }) {
+    const result = db().prepare(
+      `UPDATE sync_jobs
+       SET status = 'failed', finished_at = ?, last_error_code = 'worker_job_failed',
+           last_error_message = ?, updated_at = ?
+       WHERE id = ? AND status = 'running' AND worker_id = ?`,
+    ).run(nowIso(), input.errorMessage, nowIso(), input.jobId, input.workerId);
+    return result.changes > 0;
+  },
+  deferForFloodWait(input: {
+    jobId: string;
+    accountId: string;
+    workerId: string;
+    waitSeconds: number;
+    errorMessage: string;
+  }) {
+    const now = new Date();
+    const updatedAt = now.toISOString();
+    const floodWaitUntil = new Date(now.getTime() + input.waitSeconds * 1000).toISOString();
+    return db().transaction(() => {
+      const jobUpdate = db().prepare(
         `UPDATE sync_jobs
-         SET status = 'running', worker_id = ?, started_at = COALESCE(started_at, ?), updated_at = ?
-         WHERE id = ? AND status = 'pending'`,
-      )
-      .run(workerId, startedAt, startedAt, candidate.id);
+         SET status = 'pending', worker_id = NULL, last_error_code = 'telegram_flood_wait',
+             last_error_message = ?, updated_at = ?
+         WHERE id = ? AND account_id = ? AND status = 'running' AND worker_id = ?`,
+      ).run(input.errorMessage, updatedAt, input.jobId, input.accountId, input.workerId);
+      if (jobUpdate.changes === 0) {
+        return false;
+      }
 
-    if (result.changes === 0) {
-      return null;
-    }
-
-    return this.getById(candidate.id);
+      db().prepare(
+        `UPDATE telegram_accounts
+         SET flood_wait_until = CASE
+               WHEN flood_wait_until IS NULL OR flood_wait_until < ? THEN ?
+               ELSE flood_wait_until
+             END,
+             updated_at = ?
+         WHERE id = ?`,
+      ).run(floodWaitUntil, floodWaitUntil, updatedAt, input.accountId);
+      return true;
+    })();
   },
   recordProgress(id: string, payload: {
     nextMessageId: number | null;
