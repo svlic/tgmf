@@ -8,8 +8,6 @@ services:
       - "54001:3000"
     volumes:
       - ./data:/app/data
-    depends_on:
-      - worker
 
   worker:
     build: .
