@@ -1,8 +1,5 @@
-import { sleep } from "@/lib/utils";
-
 const TELEGRAM_FLOOD_WAIT_ERROR_CODE = 420;
 const FLOOD_WAIT_SECONDS_PATTERN = /(?:FLOOD_WAIT_|A wait of )(\d+)/;
-const FLOOD_WAIT_HEARTBEAT_INTERVAL_MS = 30_000;
 
 export function getTelegramFloodWaitSeconds(error: unknown) {
   if (typeof error !== "object" || error === null) {
@@ -26,14 +23,4 @@ export function getTelegramFloodWaitSeconds(error: unknown) {
   }
 
   return isFloodError || message.includes("ForwardMessages") || message.includes("FLOOD_WAIT_") ? waitSeconds : null;
-}
-
-export async function waitForTelegramFloodWindow(waitSeconds: number, onHeartbeat: () => void) {
-  let remainingMs = waitSeconds * 1000;
-  while (remainingMs > 0) {
-    onHeartbeat();
-    const chunkMs = Math.min(remainingMs, FLOOD_WAIT_HEARTBEAT_INTERVAL_MS);
-    await sleep(chunkMs);
-    remainingMs -= chunkMs;
-  }
 }

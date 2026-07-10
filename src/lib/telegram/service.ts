@@ -25,7 +25,7 @@ import {
   missingTargetMessageErrorReason,
   partitionForwardDeliveries,
 } from "@/lib/telegram/transfer-outcome";
-import { getTelegramFloodWaitSeconds, waitForTelegramFloodWindow } from "@/lib/telegram/flood-wait";
+import { getTelegramFloodWaitSeconds } from "@/lib/telegram/flood-wait";
 
 export type StartLoginResult = {
   loginState: "awaiting_code";
@@ -76,7 +76,7 @@ export function resolveSyncJobFinalStatus(failedMessages: number): "completed" |
   return failedMessages > 0 ? "failed" : "completed";
 }
 
-const TERMINAL_TRANSFER_STATUSES = new Set(["sent", "skipped"]);
+const TERMINAL_TRANSFER_STATUSES = new Set(["sent", "warn", "skipped"]);
 
 export function filterCopyMessagesPendingTransfer<T extends { id: number }>(
   messages: readonly T[],
@@ -86,10 +86,6 @@ export function filterCopyMessagesPendingTransfer<T extends { id: number }>(
     const existing = getTransferRecord(message.id);
     return !existing || !TERMINAL_TRANSFER_STATUSES.has(existing.status);
   });
-}
-
-function getActiveLoginSession(accountId: string) {
-  return telegramLoginSessionRepository.getActive(accountId);
 }
 
 export async function testAccountConnectivity(accountId: string) {
@@ -131,7 +127,7 @@ export async function beginPhoneLogin(accountId: string, phoneNumberOverride?: s
 }
 
 export async function completePhoneCodeLogin(accountId: string, phoneCode: string) {
-  const loginState = getActiveLoginSession(accountId);
+  const loginState = telegramLoginSessionRepository.getActive(accountId);
   if (!loginState) {
     throw new Error("Login session expired. Please restart login.");
   }
@@ -164,7 +160,7 @@ export async function completePhoneCodeLogin(accountId: string, phoneCode: strin
 }
 
 export async function completePasswordLogin(accountId: string, password: string) {
-  const loginState = getActiveLoginSession(accountId);
+  const loginState = telegramLoginSessionRepository.getActive(accountId);
   if (!loginState) {
     throw new Error("Login session expired. Please restart login.");
   }
@@ -726,7 +722,11 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
       try {
         const alreadyTransferred = transferRecordRepository.getByJobAndSourceMessageId(job.id, messageId);
-        if (alreadyTransferred?.status === "sent" || alreadyTransferred?.status === "skipped") {
+        if (
+          alreadyTransferred?.status === "sent" ||
+          alreadyTransferred?.status === "warn" ||
+          alreadyTransferred?.status === "skipped"
+        ) {
           pendingAlreadyTransferredCount += 1;
           if (pendingAlreadyTransferredCount >= alreadyTransferredFlushThreshold) {
             flushAlreadyTransferredProgress(nextMessageId);
@@ -822,21 +822,21 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         const skippedByFilters = filterSkippedMessages.length;
         messagesToForward = textFilteredMessages.allowed;
 
-        if (job.mode === "copy") {
-          filterSkippedMessages.forEach(({ message, reason }) => {
-            if (!message.id) {
-              return;
-            }
-            transferRecordRepository.upsert({
-              jobId: job.id,
-              sourceMessageId: message.id,
-              mediaGroupId: getGroupedIdKey(message),
-              status: "skipped",
-              errorReason: reason,
-            });
+        filterSkippedMessages.forEach(({ message, reason }) => {
+          if (!message.id) {
+            return;
+          }
+          transferRecordRepository.upsert({
+            jobId: job.id,
+            sourceMessageId: message.id,
+            mediaGroupId: getGroupedIdKey(message),
+            status: "skipped",
+            errorReason: reason,
           });
-          const currentMessageWasFiltered = filterSkippedMessages.find(({ message }) => message.id === messageId);
-          if (currentMessageWasFiltered?.message.id) {
+        });
+
+        if (job.mode === "copy") {
+          if (filterSkippedMessages.some(({ message }) => message.id === messageId)) {
             jobRepository.recordProgress(job.id, {
               nextMessageId,
               skippedIncrement: skippedByAlbumPolicy + (messagesToForward.length === 0 ? skippedByFilters : 0),
@@ -844,18 +844,6 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             continue;
           }
         } else {
-          filterSkippedMessages.forEach(({ message, reason }) => {
-            if (!message.id) {
-              return;
-            }
-            transferRecordRepository.upsert({
-              jobId: job.id,
-              sourceMessageId: message.id,
-              mediaGroupId: getGroupedIdKey(message),
-              status: "skipped",
-              errorReason: reason,
-            });
-          });
           if (messagesToForward.length === 0) {
             jobRepository.recordProgress(job.id, {
               nextMessageId,
@@ -891,7 +879,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               jobId: job.id,
               sourceMessageId,
               mediaGroupId: sourceMessage ? getGroupedIdKey(sourceMessage) : null,
-              status: "skipped",
+              status: "warn",
               errorReason: missingTargetMessageErrorReason(),
             });
           });
@@ -911,8 +899,6 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             nextMessageId,
             succeededIncrement: delivered.length,
             skippedIncrement: skippedByAlbumPolicy + skippedByFilters + forwardResult.skipped.length + undelivered.length,
-            lastErrorCode: undelivered.length > 0 ? "message_transfer_warn" : null,
-            lastErrorMessage: undelivered.length > 0 ? missingTargetMessageErrorReason() : null,
           });
         } else {
           const copyableMessages = messagesToForward.filter(
@@ -961,7 +947,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
                   jobId: job.id,
                   sourceMessageId: copyableMessage.id,
                   mediaGroupId: getGroupedIdKey(copyableMessage),
-                  status: "skipped",
+                  status: "warn",
                   errorReason: copyOutcome.errorReason,
                 });
               }
@@ -996,14 +982,14 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         const floodWaitSeconds = getTelegramFloodWaitSeconds(error);
         if (floodWaitSeconds !== null) {
           const errorMessage = safeErrorMessage(error);
-          jobRepository.recordProgress(job.id, {
-            nextMessageId: messageId,
-            lastErrorCode: "telegram_flood_wait",
-            lastErrorMessage: errorMessage,
+          jobRepository.deferForFloodWait({
+            jobId: job.id,
+            accountId: job.account_id,
+            workerId,
+            waitSeconds: floodWaitSeconds,
+            errorMessage,
           });
-          await waitForTelegramFloodWindow(floodWaitSeconds, onHeartbeat);
-          index -= 1;
-          continue;
+          return;
         }
 
         flushAlreadyTransferredProgress(nextMessageId);

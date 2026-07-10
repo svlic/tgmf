@@ -37,11 +37,10 @@ async function runJob() {
     });
   } catch (error) {
     const errorMessage = safeErrorMessage(error);
-    jobRepository.setStatus(job.id, "failed", {
-      worker_id: workerId,
-      finished_at: nowIso(),
-      last_error_code: "worker_job_failed",
-      last_error_message: errorMessage,
+    jobRepository.failIfRunningByWorker({
+      jobId: job.id,
+      workerId,
+      errorMessage,
     });
     heartbeat("idle", null, {
       phase: "job_failed",
@@ -51,7 +50,6 @@ async function runJob() {
     });
   }
 }
-
 
 async function main() {
   heartbeat("idle", null, { phase: "starting" });

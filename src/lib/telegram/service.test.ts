@@ -1,18 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   partitionCaptionedAlbumMessages,
   type CaptionSelectableMessage,
 } from "@/lib/telegram/album-policy";
-import { getTelegramFloodWaitSeconds, waitForTelegramFloodWindow } from "@/lib/telegram/flood-wait";
+import { getTelegramFloodWaitSeconds } from "@/lib/telegram/flood-wait";
 import { filterCopyMessagesPendingTransfer, resolveSyncJobFinalStatus } from "@/lib/telegram/service";
 
 describe("filterCopyMessagesPendingTransfer", () => {
   it("excludes album members that already reached a terminal transfer status", () => {
-    const messages = [{ id: 10 }, { id: 11 }, { id: 12 }];
+    const messages = [{ id: 10 }, { id: 11 }, { id: 12 }, { id: 13 }];
     const records = new Map<number, { status: string }>([
       [10, { status: "sent" }],
       [11, { status: "failed" }],
       [12, { status: "skipped" }],
+      [13, { status: "warn" }],
     ]);
 
     const pending = filterCopyMessagesPendingTransfer(messages, (id) => records.get(id) ?? null);
@@ -96,24 +97,5 @@ describe("getTelegramFloodWaitSeconds", () => {
   it("returns null for null or undefined", () => {
     expect(getTelegramFloodWaitSeconds(null)).toBeNull();
     expect(getTelegramFloodWaitSeconds(undefined)).toBeNull();
-  });
-});
-
-describe("waitForTelegramFloodWindow", () => {
-  it("keeps heartbeats active while waiting for Telegram's required flood window", async () => {
-    vi.useFakeTimers();
-    const onHeartbeat = vi.fn();
-
-    try {
-      const waitPromise = waitForTelegramFloodWindow(61, onHeartbeat);
-      await vi.advanceTimersByTimeAsync(30_000);
-      await vi.advanceTimersByTimeAsync(30_000);
-      await vi.advanceTimersByTimeAsync(1_000);
-      await waitPromise;
-
-      expect(onHeartbeat).toHaveBeenCalledTimes(3);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
