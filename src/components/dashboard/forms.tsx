@@ -164,8 +164,9 @@ export function AccountCreateForm() {
       className="grid gap-5 md:grid-cols-2 items-start"
       onSubmit={async (event) => {
         event.preventDefault();
+        const form = event.currentTarget;
         setState({ error: null, success: null });
-        const formData = new FormData(event.currentTarget);
+        const formData = new FormData(form);
         const payload = {
           label: String(formData.get("label") || ""),
           phoneNumber: String(formData.get("phoneNumber") || ""),
@@ -178,7 +179,7 @@ export function AccountCreateForm() {
           return;
         }
         setState({ error: null, success: "Account created" });
-        event.currentTarget.reset();
+        form.reset();
         notifyAccountsMutated();
       }}
     >
@@ -390,7 +391,7 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
   );
 }
 
-export function AccountActionButtons({ accountId }: { accountId: string }) {
+export function AccountActionButtons({ accountId, accountLabel }: { accountId: string; accountLabel: string }) {
   const phoneCodeId = useId();
   const passwordId = useId();
   const [feedback, setFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
@@ -476,6 +477,31 @@ export function AccountActionButtons({ accountId }: { accountId: string }) {
           }}
         >
           {pendingAction === "refresh-dialogs" ? "Refreshing..." : "Refresh dialogs"}
+        </Button>
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={disabled}
+          onClick={() => {
+            const confirmed = window.confirm(
+              `Delete account "${accountLabel}"? This removes its saved login session and cached dialogs.`,
+            );
+            if (!confirmed) {
+              return;
+            }
+
+            void runAccountAction(
+              "delete-account",
+              "Deleting account...",
+              () => submitJson<{ deleted: boolean }>(`/api/accounts/${accountId}`, {}, "DELETE"),
+              () => {
+                notifyAccountsMutated();
+                return "Account deleted";
+              },
+            );
+          }}
+        >
+          {pendingAction === "delete-account" ? "Deleting..." : "Delete"}
         </Button>
       </div>
 
@@ -653,7 +679,7 @@ export function AccountActionPanel({
         </div>
       </CardHeader>
       <CardContent>
-        <AccountActionButtons accountId={accountId} />
+        <AccountActionButtons accountId={accountId} accountLabel={accountLabel} />
       </CardContent>
     </Card>
   );

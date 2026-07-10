@@ -1,0 +1,23 @@
+import { requireAdminSession, assertCsrf } from "@/lib/auth";
+import { accountRepository, withRepositoryError } from "@/lib/db/repositories";
+import { fail, ok } from "@/lib/http";
+import { rethrowNextError } from "@/lib/next";
+
+type RouteContext = { params: Promise<{ accountId: string }> };
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  try {
+    await requireAdminSession();
+    await assertCsrf();
+    const { accountId } = await context.params;
+    const deleted = withRepositoryError(() => accountRepository.delete(accountId));
+    if (!deleted) {
+      return fail("Account not found", 404);
+    }
+
+    return ok({ deleted: true });
+  } catch (error) {
+    rethrowNextError(error);
+    return fail(error instanceof Error ? error.message : "Failed to delete account", 400);
+  }
+}

@@ -83,7 +83,7 @@ export function AccountsLiveList({ initial }: AccountsLiveListProps) {
                       </div>
                     </dl>
                   </div>
-                  <AccountActionButtons accountId={account.id} />
+                  <AccountActionButtons accountId={account.id} accountLabel={account.label} />
                 </CardContent>
               </Card>
             </li>
