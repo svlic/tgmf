@@ -191,7 +191,7 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
                   <DataTableHeader>Target</DataTableHeader>
                   <DataTableHeader>Group</DataTableHeader>
                   <DataTableHeader>Status</DataTableHeader>
-                  <DataTableHeader>Error</DataTableHeader>
+                  <DataTableHeader>Details</DataTableHeader>
                   <DataTableHeader>Processed</DataTableHeader>
                 </DataTableRow>
               </DataTableHead>

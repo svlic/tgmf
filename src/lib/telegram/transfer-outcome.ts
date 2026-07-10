@@ -27,14 +27,14 @@ export function partitionForwardDeliveries(rows: readonly ForwardDeliveryRow[]):
 
 export type CopyDeliveryClassification =
   | { outcome: "sent"; targetMessageId: number }
-  | { outcome: "skipped"; errorReason: string };
+  | { outcome: "warn"; errorReason: string };
 
 export function classifyCopyDelivery(targetMessageId: number | null): CopyDeliveryClassification {
   if (typeof targetMessageId === "number") {
     return { outcome: "sent", targetMessageId };
   }
 
-  return { outcome: "skipped", errorReason: MISSING_TARGET_MESSAGE_ERROR };
+  return { outcome: "warn", errorReason: MISSING_TARGET_MESSAGE_ERROR };
 }
 
 export function missingTargetMessageErrorReason() {

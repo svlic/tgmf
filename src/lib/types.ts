@@ -16,7 +16,7 @@ export type JobOrder = "asc" | "desc";
 export type AlbumStrategy = "full_group" | "captioned_only";
 export const ALLOWED_MEDIA_TYPES = ["text", "photo", "video", "audio", "voice", "document", "other"] as const;
 export type AllowedMediaType = (typeof ALLOWED_MEDIA_TYPES)[number];
-export type MessageRecordStatus = "pending" | "sent" | "skipped" | "failed";
+export type MessageRecordStatus = "pending" | "sent" | "warn" | "skipped" | "failed";
 
 export type WorkerStatus = "idle" | "running" | "stale";
 
@@ -40,6 +40,7 @@ export type TelegramAccountRow = {
   created_at: string;
   updated_at: string;
   last_connected_at: string | null;
+  flood_wait_until: string | null;
 };
 
 export type TelegramLoginSessionRow = {

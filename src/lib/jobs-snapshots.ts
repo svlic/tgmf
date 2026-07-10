@@ -1,4 +1,4 @@
-import type { JobStatus, SyncJobRow, WorkerHeartbeatRow } from "@/lib/types";
+import type { JobStatus, MessageRecordStatus, SyncJobRow, WorkerHeartbeatRow } from "@/lib/types";
 
 export const JOBS_POLL_INTERVAL_MS = 2_000;
 export const JOBS_MUTATED_EVENT = "tgmf:jobs-mutated";
@@ -51,7 +51,7 @@ export type JobDetailSnapshot = {
     source_message_id: number;
     target_message_id: number | null;
     media_group_id: string | null;
-    status: string;
+    status: MessageRecordStatus;
     error_reason: string | null;
     processed_at: string | null;
   }>;
