@@ -13,7 +13,8 @@ export const schemaStatements = [
     telegram_user_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    last_connected_at TEXT
+    last_connected_at TEXT,
+    flood_wait_until TEXT
   );`,
   `CREATE TABLE IF NOT EXISTS login_attempts (
     id TEXT PRIMARY KEY,

@@ -30,11 +30,26 @@ function ensureColumn(db: Database.Database, tableName: string, columnName: stri
 }
 
 function runCompatibilityMigrations(db: Database.Database) {
+  ensureColumn(db, "telegram_accounts", "flood_wait_until", "flood_wait_until TEXT");
   ensureColumn(db, "sync_jobs", "allowed_media_types", "allowed_media_types TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "keyword_whitelist", "keyword_whitelist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "keyword_blacklist", "keyword_blacklist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "regex_whitelist", "regex_whitelist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "regex_blacklist", "regex_blacklist TEXT NOT NULL DEFAULT '[]'");
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE message_transfer_records
+       SET status = 'warn'
+       WHERE status = 'skipped' AND error_reason = 'Telegram did not return a target message id'`,
+    ).run();
+    db.prepare(
+      `UPDATE sync_jobs
+       SET last_error_code = NULL, last_error_message = NULL
+       WHERE last_error_code = 'message_transfer_warn'
+         AND last_error_message = 'Telegram did not return a target message id'`,
+    ).run();
+  })();
 }
 
 export function getDb() {
