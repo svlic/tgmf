@@ -36,6 +36,13 @@ function runCompatibilityMigrations(db: Database.Database) {
   ensureColumn(db, "sync_jobs", "keyword_blacklist", "keyword_blacklist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "regex_whitelist", "regex_whitelist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "regex_blacklist", "regex_blacklist TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(db, "sync_jobs", "local_skips", "local_skips INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "sync_jobs", "send_attempts", "send_attempts INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "sync_jobs", "forward_attempts", "forward_attempts INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "sync_jobs", "forward_confirmed", "forward_confirmed INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "sync_jobs", "forward_unmapped", "forward_unmapped INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "sync_jobs", "flood_wait_events", "flood_wait_events INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "sync_jobs", "last_send_attempt_at", "last_send_attempt_at TEXT");
 
   db.transaction(() => {
     db.prepare(

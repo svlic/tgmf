@@ -74,6 +74,13 @@ export type SyncJobRow = {
   succeeded_messages: number;
   skipped_messages: number;
   failed_messages: number;
+  local_skips: number;
+  send_attempts: number;
+  forward_attempts: number;
+  forward_confirmed: number;
+  forward_unmapped: number;
+  flood_wait_events: number;
+  last_send_attempt_at: string | null;
   next_message_id: number | null;
   worker_id: string | null;
   last_error_code: string | null;

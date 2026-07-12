@@ -75,6 +75,7 @@ describe("account-scoped Telegram flood waits", () => {
       worker_id: null,
       last_error_code: "telegram_flood_wait",
       last_error_message: "FLOOD_WAIT_60",
+      flood_wait_events: 1,
     });
     expect(jobRepository.getById(secondCoolingJob.id)?.status).toBe("pending");
     expect(accountRepository.getById(coolingAccount.id)?.flood_wait_until).not.toBeNull();
@@ -142,6 +143,86 @@ describe("account-scoped Telegram flood waits", () => {
     expect(jobRepository.getById(job.id)).toMatchObject({ status: "running", worker_id: "worker_owner" });
     expect(accountRepository.getById(jobAccount.id)?.flood_wait_until).toBeNull();
     expect(accountRepository.getById(otherAccount.id)?.flood_wait_until).toBeNull();
+  });
+});
+
+describe("job transfer observability", () => {
+  it("records send attempts separately from delivery outcomes", () => {
+    // Given
+    const { job } = createReadyAccountAndJob("metrics", "+10000000010");
+    const attemptedAt = "2026-07-12T08:00:00.000Z";
+    jobRepository.setStatus(job.id, "running", { worker_id: "worker_owner" });
+
+    // When
+    const recorded = jobRepository.recordSendAttempt({
+      jobId: job.id,
+      accountId: job.account_id,
+      workerId: "worker_owner",
+      attemptedAt,
+      forward: true,
+    });
+    jobRepository.recordProgress(job.id, {
+      nextMessageId: null,
+      skippedIncrement: 1,
+      forwardUnmappedIncrement: 1,
+    });
+
+    // Then
+    expect(recorded).toBe(true);
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      send_attempts: 1,
+      forward_attempts: 1,
+      forward_confirmed: 0,
+      forward_unmapped: 1,
+      last_send_attempt_at: attemptedAt,
+    });
+  });
+
+  it("rejects a send attempt after worker ownership changes", () => {
+    // Given
+    const { job } = createReadyAccountAndJob("stale metrics", "+10000000016");
+    jobRepository.setStatus(job.id, "running", { worker_id: "replacement_worker" });
+
+    // When
+    const recorded = jobRepository.recordSendAttempt({
+      jobId: job.id,
+      accountId: job.account_id,
+      workerId: "stale_worker",
+      attemptedAt: "2026-07-12T08:00:00.000Z",
+      forward: true,
+    });
+
+    // Then
+    expect(recorded).toBe(false);
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      send_attempts: 0,
+      forward_attempts: 0,
+      last_send_attempt_at: null,
+    });
+  });
+});
+
+describe("account send serialization", () => {
+  it("does not claim a second job while the same account has a running job", () => {
+    // Given
+    const account = accountRepository.create({ label: "serialized", phoneNumber: "+10000000015" });
+    if (!account) {
+      throw new Error("Failed to create test account");
+    }
+    const runningJob = createJob(account.id);
+    const pendingJob = createJob(account.id);
+    if (!runningJob || !pendingJob) {
+      throw new Error("Failed to create test jobs");
+    }
+    jobRepository.setStatus(runningJob.id, "running", { worker_id: "active_worker" });
+    workerRepository.heartbeat("active_worker", "running", runningJob.id);
+
+    // When
+    const claimed = jobRepository.claimNext("other_worker");
+
+    // Then
+    expect(claimed).toBeNull();
+    expect(jobRepository.getById(pendingJob.id)?.status).toBe("pending");
   });
 });
 

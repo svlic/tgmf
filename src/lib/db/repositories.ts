@@ -389,6 +389,11 @@ export const jobRepository = {
            JOIN telegram_accounts ON telegram_accounts.id = sync_jobs.account_id
            WHERE sync_jobs.status = 'pending'
              AND (telegram_accounts.flood_wait_until IS NULL OR telegram_accounts.flood_wait_until <= ?)
+             AND NOT EXISTS (
+               SELECT 1 FROM sync_jobs active_job
+               WHERE active_job.account_id = sync_jobs.account_id
+                 AND active_job.status = 'running'
+             )
            ORDER BY sync_jobs.created_at ASC
            LIMIT 1`,
         )
@@ -435,7 +440,7 @@ export const jobRepository = {
       const jobUpdate = db().prepare(
         `UPDATE sync_jobs
          SET status = 'pending', worker_id = NULL, last_error_code = 'telegram_flood_wait',
-             last_error_message = ?, updated_at = ?
+             last_error_message = ?, flood_wait_events = flood_wait_events + 1, updated_at = ?
          WHERE id = ? AND account_id = ? AND status = 'running' AND worker_id = ?`,
       ).run(input.errorMessage, updatedAt, input.jobId, input.accountId, input.workerId);
       if (jobUpdate.changes === 0) {
@@ -454,17 +459,48 @@ export const jobRepository = {
       return true;
     })();
   },
+  recordSendAttempt(input: {
+    jobId: string;
+    accountId: string;
+    workerId: string;
+    attemptedAt: string;
+    forward: boolean;
+  }) {
+    const result = db().prepare(
+      `UPDATE sync_jobs
+       SET send_attempts = send_attempts + 1,
+           forward_attempts = forward_attempts + ?,
+           last_send_attempt_at = ?,
+           updated_at = ?
+       WHERE id = ? AND account_id = ? AND status = 'running' AND worker_id = ?`,
+    ).run(
+      input.forward ? 1 : 0,
+      input.attemptedAt,
+      input.attemptedAt,
+      input.jobId,
+      input.accountId,
+      input.workerId,
+    );
+
+    return result.changes > 0;
+  },
   recordProgress(id: string, payload: {
     nextMessageId: number | null;
     succeededIncrement?: number;
     skippedIncrement?: number;
     failedIncrement?: number;
+    localSkipsIncrement?: number;
+    forwardConfirmedIncrement?: number;
+    forwardUnmappedIncrement?: number;
     lastErrorCode?: string | null;
     lastErrorMessage?: string | null;
   }) {
     const succeededIncrement = payload.succeededIncrement ?? 0;
     const skippedIncrement = payload.skippedIncrement ?? 0;
     const failedIncrement = payload.failedIncrement ?? 0;
+    const localSkipsIncrement = payload.localSkipsIncrement ?? 0;
+    const forwardConfirmedIncrement = payload.forwardConfirmedIncrement ?? 0;
+    const forwardUnmappedIncrement = payload.forwardUnmappedIncrement ?? 0;
     const processedIncrement = succeededIncrement + skippedIncrement + failedIncrement;
     const shouldUpdateLastErrorCode = payload.lastErrorCode !== undefined;
     const shouldUpdateLastErrorMessage = payload.lastErrorMessage !== undefined;
@@ -476,6 +512,9 @@ export const jobRepository = {
            succeeded_messages = succeeded_messages + ?,
            skipped_messages = skipped_messages + ?,
            failed_messages = failed_messages + ?,
+           local_skips = local_skips + ?,
+           forward_confirmed = forward_confirmed + ?,
+           forward_unmapped = forward_unmapped + ?,
            last_error_code = CASE WHEN ? THEN ? ELSE last_error_code END,
            last_error_message = CASE WHEN ? THEN ? ELSE last_error_message END,
            updated_at = ?
@@ -486,6 +525,9 @@ export const jobRepository = {
       succeededIncrement,
       skippedIncrement,
       failedIncrement,
+      localSkipsIncrement,
+      forwardConfirmedIncrement,
+      forwardUnmappedIncrement,
       shouldUpdateLastErrorCode ? 1 : 0,
       payload.lastErrorCode ?? null,
       shouldUpdateLastErrorMessage ? 1 : 0,
