@@ -22,7 +22,7 @@ import {
   JOBS_POLL_INTERVAL_MS,
   type JobDetailSnapshot,
 } from "@/lib/jobs-snapshots";
-import { jobStatusVariant } from "@/lib/job-ui";
+import { formatJobDateTime, jobStatusVariant } from "@/lib/job-ui";
 import { normalizeAllowedMediaType } from "@/lib/media-types";
 import type { AllowedMediaType } from "@/lib/types";
 
@@ -118,6 +118,25 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
           value={`${job.succeeded_messages} ok`}
           hint={`${job.failed_messages} failed · ${job.skipped_messages} skipped`}
         />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label="Send attempts"
+          value={job.send_attempts}
+          hint={`${job.forward_attempts} forward attempts`}
+        />
+        <StatTile
+          label="Forward mapping"
+          value={`${job.forward_confirmed} confirmed`}
+          hint={`${job.forward_unmapped} unmapped`}
+        />
+        <StatTile
+          label="Local skips"
+          value={job.local_skips}
+          hint={`${job.flood_wait_events} FloodWait events`}
+        />
+        <StatTile label="Last send attempt" value={formatJobDateTime(job.last_send_attempt_at)} />
       </div>
 
       <div className="h-2 overflow-hidden rounded-full bg-secondary">
