@@ -26,6 +26,7 @@ import {
   partitionForwardDeliveries,
 } from "@/lib/telegram/transfer-outcome";
 import { getTelegramFloodWaitSeconds } from "@/lib/telegram/flood-wait";
+import { AccountSendLimiter } from "@/lib/telegram/send-limiter";
 
 export type StartLoginResult = {
   loginState: "awaiting_code";
@@ -48,6 +49,7 @@ type ForwardedMessage = {
 type ForwardResult = {
   sent: ForwardedMessage[];
   skipped: MessageLike[];
+  responseCount: number;
 };
 
 type DocumentLike = {
@@ -71,6 +73,9 @@ type CopyPhaseDetails = {
 };
 
 type CopyPhaseCallback = (details: CopyPhaseDetails) => void;
+type SendAttempt = <T>(forward: boolean, attempt: () => Promise<T>) => Promise<T>;
+
+const accountSendLimiter = new AccountSendLimiter(Date.now, sleep);
 
 export function resolveSyncJobFinalStatus(failedMessages: number): "completed" | "failed" {
   return failedMessages > 0 ? "failed" : "completed";
@@ -526,34 +531,45 @@ async function fetchAlbumMessages(
   return messages.length > 0 ? sortMessagesById(messages) : [sourceMessage];
 }
 
+export function mapForwardResponse(
+  forwardableMessages: Array<MessageLike & { id: number }>,
+  sentMessages: Array<{ id?: number }>,
+): Pick<ForwardResult, "sent" | "responseCount"> {
+  return {
+    sent: forwardableMessages.map((sourceMessage, index) => {
+      const targetMessageId = sentMessages[index]?.id;
+      return {
+        sourceMessage,
+        targetMessageId: typeof targetMessageId === "number" ? targetMessageId : null,
+      };
+    }),
+    responseCount: sentMessages.length,
+  };
+}
+
 async function forwardMessages(
   client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
   job: SyncJobRow,
   sourceMessages: MessageLike[],
+  sendAttempt: SendAttempt,
 ): Promise<ForwardResult> {
   const forwardableMessages = sourceMessages.filter(isForwardableMessage);
   const skipped = sourceMessages.filter((message) => !isForwardableMessage(message));
   const sourceMessageIds = forwardableMessages.map((message) => message.id);
 
   if (sourceMessageIds.length === 0) {
-    return { sent: [], skipped };
+    return { sent: [], skipped, responseCount: 0 };
   }
 
-  const sentMessages = await client.forwardMessages(job.target_channel_ref, {
-    fromPeer: job.source_channel_ref,
-    messages: sourceMessageIds,
-  });
-
-  const sent = forwardableMessages.map((sourceMessage, index) => {
-    const targetMessageId = sentMessages[index]?.id;
-    return {
-      sourceMessage,
-      targetMessageId: typeof targetMessageId === "number" ? targetMessageId : null,
-    } satisfies ForwardedMessage;
-  });
+  const sentMessages = await sendAttempt(true, () =>
+    client.forwardMessages(job.target_channel_ref, {
+      fromPeer: job.source_channel_ref,
+      messages: sourceMessageIds,
+    }),
+  );
 
   return {
-    sent,
+    ...mapForwardResponse(forwardableMessages, sentMessages),
     skipped,
   };
 }
@@ -562,6 +578,7 @@ async function copyMessage(
   client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
   job: SyncJobRow,
   message: MessageLike,
+  sendAttempt: SendAttempt,
   onPhase?: CopyPhaseCallback,
 ) {
   if (!message.id) {
@@ -575,10 +592,12 @@ async function copyMessage(
   const caption = message.message ?? "";
   if (!message.media) {
     reportCopyPhase(onPhase, { phase: "send_text", sourceMessageId });
-    const result = await client.sendMessage(job.target_channel_ref, {
-      message: caption,
-      formattingEntities: message.entities,
-    });
+    const result = await sendAttempt(false, () =>
+      client.sendMessage(job.target_channel_ref, {
+        message: caption,
+        formattingEntities: message.entities,
+      }),
+    );
     reportCopyPhase(onPhase, { phase: "sent_text", sourceMessageId });
     return result.id ?? null;
   }
@@ -618,17 +637,19 @@ async function copyMessage(
     const reportUploadProgress = createCopyProgressReporter(onPhase, sourceMessageId, mediaSize);
 
     reportCopyPhase(onPhase, { phase: "upload_start", sourceMessageId, mediaBytes: mediaSize });
-    const result = await client.sendFile(job.target_channel_ref, {
-      file: upload.file,
-      caption,
-      formattingEntities: message.entities,
-      attributes: upload.attributes,
-      supportsStreaming: upload.supportsStreaming,
-      workers: 1,
-      progressCallback: (progress) => {
-        reportUploadProgress({ phase: "upload_progress", progress });
-      },
-    });
+    const result = await sendAttempt(false, () =>
+      client.sendFile(job.target_channel_ref, {
+        file: upload.file,
+        caption,
+        formattingEntities: message.entities,
+        attributes: upload.attributes,
+        supportsStreaming: upload.supportsStreaming,
+        workers: 1,
+        progressCallback: (progress) => {
+          reportUploadProgress({ phase: "upload_progress", progress });
+        },
+      }),
+    );
     reportCopyPhase(onPhase, { phase: "sent_media", sourceMessageId, mediaBytes: mediaSize });
 
     return result.id ?? null;
@@ -639,7 +660,21 @@ async function copyMessage(
 
 export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat: () => void) {
   const { client } = await createTelegramClient(job.account_id);
-  let delayBeforeNextAttempt = false;
+  const sendAttempt: SendAttempt = (forward, attempt) =>
+    accountSendLimiter.run(job.account_id, job.delay_seconds * 1000, async () => {
+      const attemptedAt = nowIso();
+      const ownsJob = jobRepository.recordSendAttempt({
+        jobId: job.id,
+        accountId: job.account_id,
+        workerId,
+        attemptedAt,
+        forward,
+      });
+      if (!ownsJob) {
+        throw new Error("Worker no longer owns this job");
+      }
+      return attempt();
+    });
 
   try {
     await client.connect();
@@ -715,11 +750,6 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
       const messageId = messageIds[index];
       onHeartbeat();
 
-      if (delayBeforeNextAttempt && job.delay_seconds > 0) {
-        await sleep(job.delay_seconds * 1000);
-      }
-      delayBeforeNextAttempt = false;
-
       try {
         const alreadyTransferred = transferRecordRepository.getByJobAndSourceMessageId(job.id, messageId);
         if (
@@ -748,6 +778,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           jobRepository.recordProgress(job.id, {
             nextMessageId,
             skippedIncrement: 1,
+            localSkipsIncrement: 1,
           });
           continue;
         }
@@ -790,6 +821,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             jobRepository.recordProgress(job.id, {
               nextMessageId,
               skippedIncrement: skippedByAlbumPolicy,
+              localSkipsIncrement: skippedByAlbumPolicy,
             });
             continue;
           }
@@ -840,6 +872,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             jobRepository.recordProgress(job.id, {
               nextMessageId,
               skippedIncrement: skippedByAlbumPolicy + (messagesToForward.length === 0 ? skippedByFilters : 0),
+              localSkipsIncrement: skippedByAlbumPolicy + (messagesToForward.length === 0 ? skippedByFilters : 0),
             });
             continue;
           }
@@ -848,21 +881,19 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             jobRepository.recordProgress(job.id, {
               nextMessageId,
               skippedIncrement: skippedByAlbumPolicy + skippedByFilters,
+              localSkipsIncrement: skippedByAlbumPolicy + skippedByFilters,
             });
             continue;
           }
         }
 
         if (job.mode === "forward") {
-          const forwardResult = await forwardMessages(client, job, messagesToForward);
+          const forwardResult = await forwardMessages(client, job, messagesToForward, sendAttempt);
           const deliveryRows = forwardResult.sent.map(({ sourceMessage, targetMessageId }) => ({
             sourceMessageId: sourceMessage.id,
             targetMessageId,
           }));
           const { delivered, undelivered } = partitionForwardDeliveries(deliveryRows);
-          if (delivered.length > 0) {
-            delayBeforeNextAttempt = true;
-          }
           delivered.forEach(({ sourceMessageId, targetMessageId }) => {
             const sourceMessage = forwardResult.sent.find((row) => row.sourceMessage.id === sourceMessageId)?.sourceMessage;
             transferRecordRepository.upsert({
@@ -899,7 +930,23 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             nextMessageId,
             succeededIncrement: delivered.length,
             skippedIncrement: skippedByAlbumPolicy + skippedByFilters + forwardResult.skipped.length + undelivered.length,
+            localSkipsIncrement: skippedByAlbumPolicy + skippedByFilters + forwardResult.skipped.length,
+            forwardConfirmedIncrement: delivered.length,
+            forwardUnmappedIncrement: undelivered.length,
           });
+          if (undelivered.length > 0) {
+            console.warn("Telegram forward response could not be fully mapped", {
+              jobId: job.id,
+              sourceCount: deliveryRows.length,
+              responseCount: forwardResult.responseCount,
+              mappedCount: delivered.length,
+              unmappedCount: undelivered.length,
+              sourceMessageIdSample: deliveryRows.slice(0, 5).map(({ sourceMessageId }) => sourceMessageId),
+              sourceMessageIdsOmitted: Math.max(0, deliveryRows.length - 5),
+              mappedTargetMessageIdSample: delivered.slice(0, 5).map(({ targetMessageId }) => targetMessageId),
+              mappedTargetMessageIdsOmitted: Math.max(0, delivered.length - 5),
+            });
+          }
         } else {
           const copyableMessages = messagesToForward.filter(
             (message): message is MessageLike & { id: number } => typeof message.id === "number",
@@ -922,7 +969,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           let lastCopyError: string | null = null;
           for (const copyableMessage of pendingCopyMessages) {
             try {
-              const targetMessageId = await copyMessage(client, job, copyableMessage, (details) => {
+              const targetMessageId = await copyMessage(client, job, copyableMessage, sendAttempt, (details) => {
                 onHeartbeat();
                 workerRepository.heartbeat(workerId, "running", job.id, {
                   ...details,
@@ -933,7 +980,6 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               const copyOutcome = classifyCopyDelivery(targetMessageId);
               if (copyOutcome.outcome === "sent") {
                 copiedCount += 1;
-                delayBeforeNextAttempt = true;
                 transferRecordRepository.upsert({
                   jobId: job.id,
                   sourceMessageId: copyableMessage.id,
@@ -978,7 +1024,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             lastErrorMessage: lastCopyError,
           });
         }
-      } catch (error) {
+      } catch (error) { // no-excuse-ok: catch - Telegram RPC errors are narrowed by getTelegramFloodWaitSeconds.
         const floodWaitSeconds = getTelegramFloodWaitSeconds(error);
         if (floodWaitSeconds !== null) {
           const errorMessage = safeErrorMessage(error);

@@ -4,7 +4,11 @@ import {
   type CaptionSelectableMessage,
 } from "@/lib/telegram/album-policy";
 import { getTelegramFloodWaitSeconds } from "@/lib/telegram/flood-wait";
-import { filterCopyMessagesPendingTransfer, resolveSyncJobFinalStatus } from "@/lib/telegram/service";
+import {
+  filterCopyMessagesPendingTransfer,
+  mapForwardResponse,
+  resolveSyncJobFinalStatus,
+} from "@/lib/telegram/service";
 
 describe("filterCopyMessagesPendingTransfer", () => {
   it("excludes album members that already reached a terminal transfer status", () => {
@@ -28,6 +32,24 @@ describe("filterCopyMessagesPendingTransfer", () => {
     const pending = filterCopyMessagesPendingTransfer(messages, (id) => records.get(id) ?? null);
 
     expect(pending).toEqual(messages);
+  });
+});
+
+describe("mapForwardResponse", () => {
+  it("reports the raw response count when Telegram returns fewer messages than requested", () => {
+    // Given
+    const sourceMessages = [{ id: 10 }, { id: 11 }, { id: 12 }];
+
+    // When
+    const result = mapForwardResponse(sourceMessages, [{ id: 100 }]);
+
+    // Then
+    expect(result.responseCount).toBe(1);
+    expect(result.sent).toEqual([
+      { sourceMessage: sourceMessages[0], targetMessageId: 100 },
+      { sourceMessage: sourceMessages[1], targetMessageId: null },
+      { sourceMessage: sourceMessages[2], targetMessageId: null },
+    ]);
   });
 });
 
