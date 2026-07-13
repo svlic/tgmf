@@ -73,7 +73,12 @@ type CopyPhaseDetails = {
 };
 
 type CopyPhaseCallback = (details: CopyPhaseDetails) => void;
-type SendAttempt = <T>(forward: boolean, attempt: () => Promise<T>) => Promise<T>;
+type TelegramAttemptKind = "read" | "send" | "forward";
+type TelegramAttempt = <T>(kind: TelegramAttemptKind, attempt: () => Promise<T>) => Promise<T>;
+
+export function shouldRecordTelegramSuccess(kind: TelegramAttemptKind): boolean {
+  return kind !== "read";
+}
 
 const accountSendLimiter = new AccountSendLimiter(Date.now, sleep);
 
@@ -513,17 +518,21 @@ async function fetchAlbumMessages(
   client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
   job: SyncJobRow,
   sourceMessage: MessageLike,
+  telegramAttempt: TelegramAttempt,
 ) {
   const groupedId = getGroupedIdKey(sourceMessage);
-  if (!groupedId || !sourceMessage.id) {
+  const sourceMessageId = sourceMessage.id;
+  if (!groupedId || !sourceMessageId) {
     return [sourceMessage];
   }
 
-  const nearby = await client.getMessages(job.source_channel_ref, {
-    minId: Math.max(0, sourceMessage.id - 10),
-    maxId: sourceMessage.id + 10,
-    limit: 25,
-  });
+  const nearby = await telegramAttempt("read", () =>
+    client.getMessages(job.source_channel_ref, {
+      minId: Math.max(0, sourceMessageId - 10),
+      maxId: sourceMessageId + 10,
+      limit: 25,
+    }),
+  );
   const messages = Array.from(nearby as Iterable<MessageLike>).filter(
     (message) => getGroupedIdKey(message) === groupedId && isMessageInJobRange(message, job),
   );
@@ -551,7 +560,7 @@ async function forwardMessages(
   client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
   job: SyncJobRow,
   sourceMessages: MessageLike[],
-  sendAttempt: SendAttempt,
+  telegramAttempt: TelegramAttempt,
 ): Promise<ForwardResult> {
   const forwardableMessages = sourceMessages.filter(isForwardableMessage);
   const skipped = sourceMessages.filter((message) => !isForwardableMessage(message));
@@ -561,11 +570,13 @@ async function forwardMessages(
     return { sent: [], skipped, responseCount: 0 };
   }
 
-  const sentMessages = await sendAttempt(true, () =>
-    client.forwardMessages(job.target_channel_ref, {
-      fromPeer: job.source_channel_ref,
-      messages: sourceMessageIds,
-    }),
+  const sentMessages = await telegramAttempt(
+    "forward",
+    () =>
+      client.forwardMessages(job.target_channel_ref, {
+        fromPeer: job.source_channel_ref,
+        messages: sourceMessageIds,
+      }),
   );
 
   return {
@@ -578,7 +589,7 @@ async function copyMessage(
   client: Awaited<ReturnType<typeof createTelegramClient>>["client"],
   job: SyncJobRow,
   message: MessageLike,
-  sendAttempt: SendAttempt,
+  telegramAttempt: TelegramAttempt,
   onPhase?: CopyPhaseCallback,
 ) {
   if (!message.id) {
@@ -592,7 +603,7 @@ async function copyMessage(
   const caption = message.message ?? "";
   if (!message.media) {
     reportCopyPhase(onPhase, { phase: "send_text", sourceMessageId });
-    const result = await sendAttempt(false, () =>
+    const result = await telegramAttempt("send", () =>
       client.sendMessage(job.target_channel_ref, {
         message: caption,
         formattingEntities: message.entities,
@@ -613,16 +624,18 @@ async function copyMessage(
   try {
     const reportDownloadProgress = createCopyProgressReporter(onPhase, sourceMessageId);
     reportCopyPhase(onPhase, { phase: "download_start", sourceMessageId });
-    const downloaded = await client.downloadMedia(message, {
-      outputFile: tempFilePath,
-      progressCallback: (downloadedBytes, totalBytes) => {
-        reportDownloadProgress({
-          phase: "download_progress",
-          downloadedBytes: downloadedBytes.toString(),
-          totalBytes: totalBytes.toString(),
-        });
-      },
-    });
+    const downloaded = await telegramAttempt("read", () =>
+      client.downloadMedia(message, {
+        outputFile: tempFilePath,
+        progressCallback: (downloadedBytes, totalBytes) => {
+          reportDownloadProgress({
+            phase: "download_progress",
+            downloadedBytes: downloadedBytes.toString(),
+            totalBytes: totalBytes.toString(),
+          });
+        },
+      }),
+    );
     if (typeof downloaded !== "string" || path.resolve(downloaded) !== path.resolve(tempFilePath)) {
       throw new Error(`Failed to download media from message ${sourceMessageId}`);
     }
@@ -637,7 +650,7 @@ async function copyMessage(
     const reportUploadProgress = createCopyProgressReporter(onPhase, sourceMessageId, mediaSize);
 
     reportCopyPhase(onPhase, { phase: "upload_start", sourceMessageId, mediaBytes: mediaSize });
-    const result = await sendAttempt(false, () =>
+    const result = await telegramAttempt("send", () =>
       client.sendFile(job.target_channel_ref, {
         file: upload.file,
         caption,
@@ -660,21 +673,30 @@ async function copyMessage(
 
 export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat: () => void) {
   const { client } = await createTelegramClient(job.account_id);
-  const sendAttempt: SendAttempt = (forward, attempt) =>
-    accountSendLimiter.run(job.account_id, job.delay_seconds * 1000, async () => {
-      const attemptedAt = nowIso();
-      const ownsJob = jobRepository.recordSendAttempt({
-        jobId: job.id,
-        accountId: job.account_id,
-        workerId,
-        attemptedAt,
-        forward,
-      });
-      if (!ownsJob) {
-        throw new Error("Worker no longer owns this job");
+  const configuredIntervalMs = job.delay_seconds * 1_000;
+  const telegramAttempt: TelegramAttempt = (kind, attempt) => {
+    const account = accountRepository.getById(job.account_id);
+    const minimumIntervalMs = Math.max(configuredIntervalMs, account?.adaptive_interval_ms ?? 0);
+    return accountSendLimiter.run(job.account_id, minimumIntervalMs, async () => {
+      if (kind !== "read") {
+        const ownsJob = jobRepository.recordSendAttempt({
+          jobId: job.id,
+          accountId: job.account_id,
+          workerId,
+          attemptedAt: nowIso(),
+          forward: kind === "forward",
+        });
+        if (!ownsJob) {
+          throw new Error("Worker no longer owns this job");
+        }
       }
-      return attempt();
+      const result = await attempt();
+      if (shouldRecordTelegramSuccess(kind)) {
+        accountRepository.recordTelegramSuccess(job.account_id, configuredIntervalMs);
+      }
+      return result;
     });
+  };
 
   try {
     await client.connect();
@@ -718,7 +740,9 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         return;
       }
 
-      const fetched = await client.getMessages(job.source_channel_ref, { ids: uncachedIds });
+      const fetched = await telegramAttempt("read", () =>
+        client.getMessages(job.source_channel_ref, { ids: uncachedIds }),
+      );
       const fetchedMessages = Array.isArray(fetched)
         ? fetched.flatMap((message) => (message ? [message as MessageLike] : []))
         : fetched
@@ -788,7 +812,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           ? (groupedMessagesCache.get(groupedIdKey) ?? [sourceMessage as MessageLike])
           : [sourceMessage as MessageLike];
         if (groupedIdKey && !groupedMessagesCache.has(groupedIdKey)) {
-          messagesToForward = await fetchAlbumMessages(client, job, sourceMessage as MessageLike);
+          messagesToForward = await fetchAlbumMessages(client, job, sourceMessage as MessageLike, telegramAttempt);
           groupedMessagesCache.set(groupedIdKey, messagesToForward);
           messagesToForward.forEach((message) => {
             if (typeof message.id === "number") {
@@ -888,7 +912,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         }
 
         if (job.mode === "forward") {
-          const forwardResult = await forwardMessages(client, job, messagesToForward, sendAttempt);
+          const forwardResult = await forwardMessages(client, job, messagesToForward, telegramAttempt);
           const deliveryRows = forwardResult.sent.map(({ sourceMessage, targetMessageId }) => ({
             sourceMessageId: sourceMessage.id,
             targetMessageId,
@@ -969,7 +993,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           let lastCopyError: string | null = null;
           for (const copyableMessage of pendingCopyMessages) {
             try {
-              const targetMessageId = await copyMessage(client, job, copyableMessage, sendAttempt, (details) => {
+              const targetMessageId = await copyMessage(client, job, copyableMessage, telegramAttempt, (details) => {
                 onHeartbeat();
                 workerRepository.heartbeat(workerId, "running", job.id, {
                   ...details,

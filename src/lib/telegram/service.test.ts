@@ -8,6 +8,7 @@ import {
   filterCopyMessagesPendingTransfer,
   mapForwardResponse,
   resolveSyncJobFinalStatus,
+  shouldRecordTelegramSuccess,
 } from "@/lib/telegram/service";
 
 describe("filterCopyMessagesPendingTransfer", () => {
@@ -50,6 +51,27 @@ describe("mapForwardResponse", () => {
       { sourceMessage: sourceMessages[1], targetMessageId: null },
       { sourceMessage: sourceMessages[2], targetMessageId: null },
     ]);
+  });
+});
+
+describe("shouldRecordTelegramSuccess", () => {
+  it("does not record adaptive pacing success after a read", () => {
+    // Given
+    const attemptKind = "read";
+
+    // When
+    const shouldRecord = shouldRecordTelegramSuccess(attemptKind);
+
+    // Then
+    expect(shouldRecord).toBe(false);
+  });
+
+  it.each(["send", "forward"] as const)("records adaptive pacing success after a successful %s", (attemptKind) => {
+    // Given / When
+    const shouldRecord = shouldRecordTelegramSuccess(attemptKind);
+
+    // Then
+    expect(shouldRecord).toBe(true);
   });
 });
 
