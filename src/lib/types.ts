@@ -4,6 +4,7 @@ export type AdminSessionPayload = {
 };
 
 export type JobStatus =
+  | "draft"
   | "pending"
   | "running"
   | "paused"
@@ -41,6 +42,7 @@ export type TelegramAccountRow = {
   updated_at: string;
   last_connected_at: string | null;
   flood_wait_until: string | null;
+  adaptive_interval_ms: number;
 };
 
 export type TelegramLoginSessionRow = {
@@ -90,6 +92,17 @@ export type SyncJobRow = {
   finished_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type JobEventRow = {
+  id: string;
+  job_id: string;
+  event_type: "flood_wait";
+  status: "warn";
+  details: string;
+  wait_seconds: number | null;
+  adaptive_interval_ms: number | null;
+  created_at: string;
 };
 
 export type MessageTransferRecordRow = {

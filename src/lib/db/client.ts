@@ -31,6 +31,7 @@ function ensureColumn(db: Database.Database, tableName: string, columnName: stri
 
 function runCompatibilityMigrations(db: Database.Database) {
   ensureColumn(db, "telegram_accounts", "flood_wait_until", "flood_wait_until TEXT");
+  ensureColumn(db, "telegram_accounts", "adaptive_interval_ms", "adaptive_interval_ms INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "sync_jobs", "allowed_media_types", "allowed_media_types TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "keyword_whitelist", "keyword_whitelist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "keyword_blacklist", "keyword_blacklist TEXT NOT NULL DEFAULT '[]'");

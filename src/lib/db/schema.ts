@@ -14,7 +14,8 @@ export const schemaStatements = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_connected_at TEXT,
-    flood_wait_until TEXT
+    flood_wait_until TEXT,
+    adaptive_interval_ms INTEGER NOT NULL DEFAULT 0
   );`,
   `CREATE TABLE IF NOT EXISTS login_attempts (
     id TEXT PRIMARY KEY,
@@ -103,6 +104,18 @@ export const schemaStatements = [
     FOREIGN KEY(job_id) REFERENCES sync_jobs(id) ON DELETE CASCADE
   );`,
   `CREATE UNIQUE INDEX IF NOT EXISTS transfer_record_unique_job_message ON message_transfer_records(job_id, source_message_id);`,
+  `CREATE TABLE IF NOT EXISTS job_events (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type = 'flood_wait'),
+    status TEXT NOT NULL CHECK (status = 'warn'),
+    details TEXT NOT NULL,
+    wait_seconds INTEGER,
+    adaptive_interval_ms INTEGER,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(job_id) REFERENCES sync_jobs(id) ON DELETE CASCADE
+  );`,
+  `CREATE INDEX IF NOT EXISTS job_events_job_created_idx ON job_events(job_id, created_at);`,
   `CREATE TABLE IF NOT EXISTS worker_heartbeats (
     worker_id TEXT PRIMARY KEY,
     status TEXT NOT NULL,
