@@ -15,6 +15,7 @@ export type JobListItemSnapshot = {
   processed_messages: number;
   total_messages: number;
   progress_percent: number;
+  last_error_code: string | null;
   last_error_message: string | null;
   finished_at: string | null;
   account_label: string | null;
@@ -48,11 +49,12 @@ export type JobDetailSnapshot = {
   record_limit: number;
   records: Array<{
     id: string;
-    source_message_id: number;
+    source_message_id: number | null;
     target_message_id: number | null;
     media_group_id: string | null;
     status: MessageRecordStatus;
     error_reason: string | null;
     processed_at: string | null;
+    kind: "transfer" | "flood_wait";
   }>;
 };

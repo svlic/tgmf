@@ -135,7 +135,7 @@ export function JobsLiveDashboard({ initial }: JobsLiveDashboardProps) {
                             style={{ width: `${job.progress_percent}%` }}
                           />
                         </div>
-                        {job.last_error_message ? (
+                        {job.last_error_message && job.last_error_code !== "telegram_flood_wait" ? (
                           <p className="text-xs leading-5 text-destructive/90">{job.last_error_message}</p>
                         ) : null}
                       </div>

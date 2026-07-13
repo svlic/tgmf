@@ -153,7 +153,7 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
             <Badge variant={jobStatusVariant(job.status)}>{job.status}</Badge>
           </div>
           <JobActionButtons jobId={job.id} status={job.status} />
-          {job.last_error_message ? (
+          {job.last_error_message && job.last_error_code !== "telegram_flood_wait" ? (
             <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {job.last_error_message}
             </p>
@@ -217,7 +217,9 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
               <DataTableBody>
                 {data.records.map((record) => (
                   <DataTableRow key={record.id}>
-                    <DataTableCell className="whitespace-nowrap font-medium">{record.source_message_id}</DataTableCell>
+                    <DataTableCell className="whitespace-nowrap font-medium">
+                      {record.kind === "flood_wait" ? "FloodWait" : record.source_message_id}
+                    </DataTableCell>
                     <DataTableCell className="whitespace-nowrap">{record.target_message_id ?? "—"}</DataTableCell>
                     <DataTableCell className="max-w-[12rem] break-all font-mono text-xs">
                       {record.media_group_id ?? "—"}

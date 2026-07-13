@@ -62,6 +62,36 @@ describe("job dashboard repositories", () => {
     expect(snapshot?.records.at(-1)?.source_message_id).toBe(150);
   });
 
+  it("keeps a newly created job unclaimable until it is manually started", () => {
+    const account = repositories.accountRepository.create({
+      label: "Manual start account",
+      phoneNumber: "+10000000002",
+    });
+    expect(account).not.toBeNull();
+    if (!account) {
+      return;
+    }
+
+    const job = repositories.jobRepository.create({
+      accountId: account.id,
+      sourceChannelRef: "manual-source",
+      targetChannelRef: "manual-target",
+      startMessageId: 1,
+      endMessageId: 1,
+      jobOrder: "asc",
+      mode: "forward",
+      albumStrategy: "full_group",
+    });
+
+    expect(job?.status).toBe("draft");
+    expect(repositories.jobRepository.claimNext("worker-before-start")).toBeNull();
+
+    const started = job ? repositories.jobRepository.requestStart(job.id) : null;
+
+    expect(started?.status).toBe("pending");
+    expect(repositories.jobRepository.claimNext("worker-after-start")?.id).toBe(job?.id);
+  });
+
   it("clears nullable status fields when explicit null extras are provided", () => {
     const account = repositories.accountRepository.create({
       label: "Second account",
