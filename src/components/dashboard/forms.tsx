@@ -621,6 +621,17 @@ export function JobActionButtons({ jobId, status }: { jobId: string; status: str
 
   return (
     <div className="flex flex-wrap gap-2 rounded-lg border border-border/70 bg-background/75 p-3">
+      {status === "draft" ? (
+        <Button
+          size="sm"
+          onClick={() => {
+            void runAction("start", `/api/jobs/${jobId}/start`, "Starting job...", "Job started");
+          }}
+          disabled={disabled}
+        >
+          {pendingAction === "start" ? "Starting..." : "Start"}
+        </Button>
+      ) : null}
       <Button
         variant="secondary"
         size="sm"
