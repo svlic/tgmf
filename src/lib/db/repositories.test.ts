@@ -8,7 +8,7 @@ const databasePath = join(tmpdir(), `tgmf-account-flood-wait-${process.pid}.db`)
 process.env.DATABASE_URL = databasePath;
 
 const { getDb } = await import("@/lib/db/client");
-const { accountRepository, jobRepository, workerRepository } = await import("@/lib/db/repositories");
+const { accountRepository, jobEventRepository, jobRepository, workerRepository } = await import("@/lib/db/repositories");
 
 function createJob(accountId: string) {
   return jobRepository.create({
@@ -58,6 +58,8 @@ describe("account-scoped Telegram flood waits", () => {
       throw new Error("Failed to create test jobs");
     }
     jobRepository.setStatus(coolingJob.id, "running", { worker_id: "worker_flooded" });
+    jobRepository.requestStart(secondCoolingJob.id);
+    jobRepository.requestStart(readyJob.id);
 
     jobRepository.deferForFloodWait({
       jobId: coolingJob.id,
@@ -78,7 +80,20 @@ describe("account-scoped Telegram flood waits", () => {
       flood_wait_events: 1,
     });
     expect(jobRepository.getById(secondCoolingJob.id)?.status).toBe("pending");
-    expect(accountRepository.getById(coolingAccount.id)?.flood_wait_until).not.toBeNull();
+    expect(accountRepository.getById(coolingAccount.id)).toMatchObject({
+      flood_wait_until: expect.any(String),
+      adaptive_interval_ms: 4_000,
+    });
+    expect(jobEventRepository.listLatestForJob(coolingJob.id, 10)).toEqual([
+      expect.objectContaining({
+        job_id: coolingJob.id,
+        event_type: "flood_wait",
+        status: "warn",
+        details: "FLOOD_WAIT_60",
+        wait_seconds: 60,
+        adaptive_interval_ms: 4_000,
+      }),
+    ]);
     expect(
       jobRepository.failIfRunningByWorker({
         jobId: coolingJob.id,
@@ -93,6 +108,33 @@ describe("account-scoped Telegram flood waits", () => {
       .run(new Date(Date.now() - 1_000).toISOString(), coolingAccount.id);
 
     expect(jobRepository.claimNext("worker_after_wait")?.account_id).toBe(coolingAccount.id);
+  });
+
+  it("backs off repeatedly and recovers toward the configured floor after successful RPCs", () => {
+    // Given
+    const { account, job } = createReadyAccountAndJob("adaptive", "+10000000017");
+    jobRepository.setStatus(job.id, "running", { worker_id: "adaptive_worker" });
+    jobRepository.deferForFloodWait({
+      jobId: job.id,
+      accountId: account.id,
+      workerId: "adaptive_worker",
+      waitSeconds: 30,
+      errorMessage: "FLOOD_WAIT_30",
+    });
+    jobRepository.setStatus(job.id, "running", { worker_id: "adaptive_worker" });
+
+    // When
+    jobRepository.deferForFloodWait({
+      jobId: job.id,
+      accountId: account.id,
+      workerId: "adaptive_worker",
+      waitSeconds: 60,
+      errorMessage: "FLOOD_WAIT_60",
+    });
+    accountRepository.recordTelegramSuccess(account.id, 2_000);
+
+    // Then
+    expect(accountRepository.getById(account.id)?.adaptive_interval_ms).toBe(6_000);
   });
 
   it("does not defer a job after its worker loses ownership", () => {
@@ -215,6 +257,7 @@ describe("account send serialization", () => {
       throw new Error("Failed to create test jobs");
     }
     jobRepository.setStatus(runningJob.id, "running", { worker_id: "active_worker" });
+    jobRepository.requestStart(pendingJob.id);
     workerRepository.heartbeat("active_worker", "running", runningJob.id);
 
     // When

@@ -9,6 +9,7 @@ import { encryptString, decryptString } from "@/lib/crypto";
 import type {
   AllowedMediaType,
   DialogCacheRow,
+  JobEventRow,
   MessageTransferRecordRow,
   SyncJobRow,
   TelegramAccountRow,
@@ -54,6 +55,13 @@ export const accountRepository = {
     return (
       (db().prepare(`SELECT * FROM telegram_accounts WHERE id = ?`).get(id) as TelegramAccountRow | undefined) ?? null
     );
+  },
+  recordTelegramSuccess(id: string, configuredIntervalMs: number) {
+    db().prepare(
+      `UPDATE telegram_accounts
+       SET adaptive_interval_ms = MAX(?, adaptive_interval_ms - ?), updated_at = ?
+       WHERE id = ?`,
+    ).run(configuredIntervalMs, configuredIntervalMs, nowIso(), id);
   },
   create(input: AccountInput) {
     const id = generateId("acct");
@@ -277,7 +285,7 @@ export const jobRepository = {
         succeeded_messages, skipped_messages, failed_messages, next_message_id, worker_id,
         last_error_code, last_error_message, cancel_requested_at, started_at, finished_at, created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
 
     ).run(
       id,
@@ -332,6 +340,18 @@ export const jobRepository = {
       nowIso(),
       id,
     );
+    return this.getById(id);
+  },
+  requestStart(id: string) {
+    const result = db().prepare(
+      `UPDATE sync_jobs
+       SET status = 'pending', updated_at = ?
+       WHERE id = ? AND status = 'draft'`,
+    ).run(nowIso(), id);
+    if (result.changes === 0) {
+      throw new Error("Only draft jobs can be started");
+    }
+
     return this.getById(id);
   },
   requestPause(id: string) {
@@ -447,15 +467,41 @@ export const jobRepository = {
         return false;
       }
 
+      const account = accountRepository.getById(input.accountId);
+      if (!account) {
+        throw new Error("Account not found");
+      }
+      const job = this.getById(input.jobId);
+      if (!job) {
+        throw new Error("Job not found");
+      }
+      const configuredIntervalMs = job.delay_seconds * 1_000;
+      const adaptiveIntervalMs = Math.min(
+        Math.max(account.adaptive_interval_ms, configuredIntervalMs) * 2,
+        300_000,
+      );
       db().prepare(
         `UPDATE telegram_accounts
          SET flood_wait_until = CASE
                WHEN flood_wait_until IS NULL OR flood_wait_until < ? THEN ?
                ELSE flood_wait_until
              END,
+             adaptive_interval_ms = ?,
              updated_at = ?
          WHERE id = ?`,
-      ).run(floodWaitUntil, floodWaitUntil, updatedAt, input.accountId);
+      ).run(floodWaitUntil, floodWaitUntil, adaptiveIntervalMs, updatedAt, input.accountId);
+      db().prepare(
+        `INSERT INTO job_events (
+          id, job_id, event_type, status, details, wait_seconds, adaptive_interval_ms, created_at
+        ) VALUES (?, ?, 'flood_wait', 'warn', ?, ?, ?, ?)`,
+      ).run(
+        generateId("evt"),
+        input.jobId,
+        input.errorMessage,
+        input.waitSeconds,
+        adaptiveIntervalMs,
+        updatedAt,
+      );
       return true;
     })();
   },
@@ -539,6 +585,22 @@ export const jobRepository = {
     if (result.changes === 0) {
       throw new Error("Job not found");
     }
+  },
+};
+
+export const jobEventRepository = {
+  countForJob(jobId: string) {
+    const row = db().prepare(`SELECT COUNT(*) AS count FROM job_events WHERE job_id = ?`).get(jobId) as { count: number };
+    return row.count;
+  },
+  listLatestForJob(jobId: string, limit: number) {
+    return db()
+      .prepare(
+        `SELECT * FROM job_events
+         WHERE job_id = ? AND event_type = 'flood_wait' AND status = 'warn'
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(jobId, limit) as JobEventRow[];
   },
 };
 
