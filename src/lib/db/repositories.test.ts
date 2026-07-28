@@ -45,7 +45,33 @@ afterAll(() => {
 });
 
 describe("jobRepository.create search selection", () => {
-  it("stores search selection with zero total and null next id until plan is set", () => {
+  it("stores search selection without message ID bounds", () => {
+    const account = accountRepository.create({ label: "search-unbounded", phoneNumber: "+10000000097" });
+    if (!account) {
+      throw new Error("Failed to create test account");
+    }
+
+    const job = jobRepository.create({
+      accountId: account.id,
+      sourceChannelRef: "source",
+      targetChannelRef: "target",
+      selection: "search",
+      searchQuery: "keyword",
+      jobOrder: "asc",
+      mode: "forward",
+      albumStrategy: "full_group",
+    });
+
+    expect(job).toMatchObject({
+      selection: "search",
+      start_message_id: 0,
+      end_message_id: 0,
+      total_messages: 0,
+      next_message_id: null,
+    });
+  });
+
+  it("stores bounded search selection with zero total and null next id until plan is set", () => {
     const account = accountRepository.create({ label: "search-acct", phoneNumber: "+10000000099" });
     if (!account) {
       throw new Error("Failed to create test account");
@@ -85,6 +111,27 @@ describe("jobRepository.create search selection", () => {
       total_messages: 3,
       next_message_id: 40,
     });
+  });
+
+  it.each([-1, 1.5, Number.NaN])("rejects invalid supplied message ID %s", (messageId) => {
+    const account = accountRepository.create({ label: "search-invalid", phoneNumber: "+10000000096" });
+    if (!account) {
+      throw new Error("Failed to create test account");
+    }
+
+    expect(() =>
+      jobRepository.create({
+        accountId: account.id,
+        sourceChannelRef: "source",
+        targetChannelRef: "target",
+        startMessageId: messageId,
+        selection: "search",
+        searchQuery: "keyword",
+        jobOrder: "asc",
+        mode: "forward",
+        albumStrategy: "full_group",
+      }),
+    ).toThrow(/positive integer/i);
   });
 
   it("rejects search selection without a query", () => {

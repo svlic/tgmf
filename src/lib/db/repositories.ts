@@ -30,8 +30,8 @@ export type JobInput = {
   accountId: string;
   sourceChannelRef: string;
   targetChannelRef: string;
-  startMessageId: number;
-  endMessageId: number;
+  startMessageId?: number;
+  endMessageId?: number;
   selection?: SyncJobRow["selection"];
   searchQuery?: string | null;
   jobOrder: SyncJobRow["job_order"];
@@ -270,19 +270,33 @@ export const jobRepository = {
     return (db().prepare(`SELECT * FROM sync_jobs WHERE id = ?`).get(id) as SyncJobRow | undefined) ?? null;
   },
   create(input: JobInput) {
-    if (input.startMessageId > input.endMessageId) {
+    const selection = input.selection ?? "range";
+    const startMessageId = input.startMessageId ?? 0;
+    const endMessageId = input.endMessageId ?? 0;
+    if (
+      (input.startMessageId !== undefined && (!Number.isInteger(input.startMessageId) || input.startMessageId <= 0)) ||
+      (input.endMessageId !== undefined && (!Number.isInteger(input.endMessageId) || input.endMessageId <= 0))
+    ) {
+      throw new Error("Supplied message IDs must be positive integers");
+    }
+    if (selection === "range" && (!input.startMessageId || !input.endMessageId)) {
+      throw new Error("startMessageId and endMessageId are required when selection is range");
+    }
+    if (
+      input.startMessageId !== undefined &&
+      input.endMessageId !== undefined &&
+      startMessageId > endMessageId
+    ) {
       throw new Error("startMessageId must be less than or equal to endMessageId");
     }
 
-    const selection = input.selection ?? "range";
     const searchQuery = selection === "search" ? (input.searchQuery?.trim() || null) : null;
     if (selection === "search" && !searchQuery) {
       throw new Error("searchQuery is required when selection is search");
     }
 
-    const totalMessages = selection === "search" ? 0 : input.endMessageId - input.startMessageId + 1;
-    const nextMessageId =
-      selection === "search" ? null : input.jobOrder === "asc" ? input.startMessageId : input.endMessageId;
+    const totalMessages = selection === "search" ? 0 : endMessageId - startMessageId + 1;
+    const nextMessageId = selection === "search" ? null : input.jobOrder === "asc" ? startMessageId : endMessageId;
     const id = generateId("job");
     const now = nowIso();
 
@@ -300,8 +314,8 @@ export const jobRepository = {
       input.accountId,
       input.sourceChannelRef,
       input.targetChannelRef,
-      input.startMessageId,
-      input.endMessageId,
+      startMessageId,
+      endMessageId,
       selection,
       searchQuery,
       input.jobOrder,
