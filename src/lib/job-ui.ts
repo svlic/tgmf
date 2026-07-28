@@ -1,4 +1,19 @@
+import type { JobSelection } from "@/lib/types";
+
 type BadgeVariant = "slate" | "blue" | "green" | "amber" | "red";
+
+export function formatMessageBounds(selection: JobSelection, startMessageId: number, endMessageId: number) {
+  if (selection === "range" || (startMessageId > 0 && endMessageId > 0)) {
+    return `${startMessageId}–${endMessageId}`;
+  }
+  if (startMessageId > 0) {
+    return `From ID ${startMessageId}`;
+  }
+  if (endMessageId > 0) {
+    return `Through ID ${endMessageId}`;
+  }
+  return "All matching messages";
+}
 
 export function jobStatusVariant(status: string): BadgeVariant {
   if (status === "completed") {

@@ -10,6 +10,7 @@ export type JobListItemSnapshot = {
   target_channel_ref: string;
   status: JobStatus;
   mode: SyncJobRow["mode"];
+  selection: SyncJobRow["selection"];
   start_message_id: number;
   end_message_id: number;
   processed_messages: number;

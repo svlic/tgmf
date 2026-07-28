@@ -26,6 +26,7 @@ function toJobListItem(job: SyncJobRow, account: TelegramAccountRow | null): Job
     target_channel_ref: job.target_channel_ref,
     status: job.status,
     mode: job.mode,
+    selection: job.selection,
     start_message_id: job.start_message_id,
     end_message_id: job.end_message_id,
     processed_messages: job.processed_messages,
