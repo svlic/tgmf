@@ -57,6 +57,8 @@ export const schemaStatements = [
     target_channel_ref TEXT NOT NULL,
     start_message_id INTEGER NOT NULL,
     end_message_id INTEGER NOT NULL,
+    selection TEXT NOT NULL DEFAULT 'range',
+    search_query TEXT,
     job_order TEXT NOT NULL,
     mode TEXT NOT NULL,
     album_strategy TEXT NOT NULL,

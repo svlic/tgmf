@@ -37,6 +37,8 @@ function runCompatibilityMigrations(db: Database.Database) {
   ensureColumn(db, "sync_jobs", "keyword_blacklist", "keyword_blacklist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "regex_whitelist", "regex_whitelist TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sync_jobs", "regex_blacklist", "regex_blacklist TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(db, "sync_jobs", "selection", "selection TEXT NOT NULL DEFAULT 'range'");
+  ensureColumn(db, "sync_jobs", "search_query", "search_query TEXT");
   ensureColumn(db, "sync_jobs", "local_skips", "local_skips INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "sync_jobs", "send_attempts", "send_attempts INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "sync_jobs", "forward_attempts", "forward_attempts INTEGER NOT NULL DEFAULT 0");

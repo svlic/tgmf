@@ -14,6 +14,7 @@ export type JobStatus =
 
 export type JobMode = "forward" | "copy";
 export type JobOrder = "asc" | "desc";
+export type JobSelection = "range" | "search";
 export type AlbumStrategy = "full_group" | "captioned_only";
 export const ALLOWED_MEDIA_TYPES = ["text", "photo", "video", "audio", "voice", "document", "other"] as const;
 export type AllowedMediaType = (typeof ALLOWED_MEDIA_TYPES)[number];
@@ -61,6 +62,8 @@ export type SyncJobRow = {
   target_channel_ref: string;
   start_message_id: number;
   end_message_id: number;
+  selection: JobSelection;
+  search_query: string | null;
   job_order: JobOrder;
   mode: JobMode;
   album_strategy: AlbumStrategy;
