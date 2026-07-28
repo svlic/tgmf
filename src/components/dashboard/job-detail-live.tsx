@@ -92,7 +92,7 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
       <PageHeader
         eyebrow="Job"
         title={`${job.source_channel_ref} → ${job.target_channel_ref}`}
-        description={`ID ${job.id} · ${job.mode} · ${job.job_order}`}
+        description={`ID ${job.id} · ${job.mode} · ${job.selection} · ${job.job_order}`}
         actions={
           <>
             <Badge variant={jobStatusVariant(job.status)}>{job.status}</Badge>
@@ -111,7 +111,17 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
           value={`${data.progress_percent}%`}
           hint={`${job.processed_messages} / ${job.total_messages} messages`}
         />
-        <StatTile label="Range" value={`${job.start_message_id}–${job.end_message_id}`} hint={job.album_strategy} />
+        <StatTile
+          label={job.selection === "search" ? "Search bounds" : "Range"}
+          value={`${job.start_message_id}–${job.end_message_id}`}
+          hint={
+            job.selection === "search"
+              ? job.search_query
+                ? `query: ${job.search_query}`
+                : "search"
+              : job.album_strategy
+          }
+        />
         <StatTile label="Account" value={data.account_label ?? "Deleted"} hint={data.account_phone ?? undefined} />
         <StatTile
           label="Outcomes"

@@ -229,6 +229,7 @@ function getDialogRef(dialog: JobAccountOption["dialogs"][number]) {
 export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
   const [state, setState] = useState<FormState>({ error: null, success: null });
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id ?? "");
+  const [selection, setSelection] = useState<"range" | "search">("range");
   const hasAccounts = accounts.length > 0;
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId) ?? accounts[0] ?? null;
 
@@ -250,6 +251,8 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
           targetChannelRef: String(formData.get("targetChannelRef") || ""),
           startMessageId: Number(formData.get("startMessageId") || 0),
           endMessageId: Number(formData.get("endMessageId") || 0),
+          selection: String(formData.get("selection") || "range"),
+          searchQuery: String(formData.get("searchQuery") || "").trim(),
           jobOrder: String(formData.get("jobOrder") || "asc"),
           mode: String(formData.get("mode") || "forward"),
           albumStrategy: String(formData.get("albumStrategy") || "full_group"),
@@ -319,12 +322,49 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
           </datalist>
         </Field>
         <Field>
+          <FieldLabel htmlFor="selection">Message selection</FieldLabel>
+          <Select
+            id="selection"
+            name="selection"
+            value={selection}
+            onChange={(event) => setSelection(event.target.value === "search" ? "search" : "range")}
+          >
+            <option value="range">ID range</option>
+            <option value="search">Telegram search</option>
+          </Select>
+          <FieldDescription>
+            Search uses Telegram&apos;s server-side query to pick candidates; keyword/regex and media filters still apply afterward.
+          </FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="searchQuery">Search query</FieldLabel>
+          <Input
+            id="searchQuery"
+            name="searchQuery"
+            maxLength={512}
+            placeholder="Keywords Telegram should match"
+            disabled={selection !== "search"}
+            required={selection === "search"}
+          />
+          <FieldDescription>Required for search selection. Independent from keyword whitelist filters below.</FieldDescription>
+        </Field>
+        <Field>
           <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>
           <Input id="startMessageId" name="startMessageId" type="number" min={1} placeholder="1" required />
+          <FieldDescription>
+            {selection === "search"
+              ? "Optional bounds for search results (inclusive min ID)."
+              : "First message ID in the transfer range (inclusive)."}
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="endMessageId">End message ID</FieldLabel>
           <Input id="endMessageId" name="endMessageId" type="number" min={1} placeholder="100" required />
+          <FieldDescription>
+            {selection === "search"
+              ? "Optional bounds for search results (inclusive max ID)."
+              : "Last message ID in the transfer range (inclusive)."}
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="jobOrder">Message order</FieldLabel>
