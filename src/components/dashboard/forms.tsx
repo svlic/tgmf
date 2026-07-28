@@ -249,8 +249,8 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
           accountId: selectedAccountId,
           sourceChannelRef: String(formData.get("sourceChannelRef") || ""),
           targetChannelRef: String(formData.get("targetChannelRef") || ""),
-          startMessageId: Number(formData.get("startMessageId") || 0),
-          endMessageId: Number(formData.get("endMessageId") || 0),
+          startMessageId: String(formData.get("startMessageId") || ""),
+          endMessageId: String(formData.get("endMessageId") || ""),
           selection: String(formData.get("selection") || "range"),
           searchQuery: String(formData.get("searchQuery") || "").trim(),
           jobOrder: String(formData.get("jobOrder") || "asc"),
@@ -350,8 +350,16 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
         </Field>
         <Field>
           <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>
-          <Input id="startMessageId" name="startMessageId" type="number" min={1} placeholder="1" required />
-          <FieldDescription>
+          <Input
+            id="startMessageId"
+            name="startMessageId"
+            type="number"
+            min={1}
+            placeholder="1"
+            required={selection === "range"}
+            aria-describedby="startMessageId-description"
+          />
+          <FieldDescription id="startMessageId-description">
             {selection === "search"
               ? "Optional bounds for search results (inclusive min ID)."
               : "First message ID in the transfer range (inclusive)."}
@@ -359,8 +367,16 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
         </Field>
         <Field>
           <FieldLabel htmlFor="endMessageId">End message ID</FieldLabel>
-          <Input id="endMessageId" name="endMessageId" type="number" min={1} placeholder="100" required />
-          <FieldDescription>
+          <Input
+            id="endMessageId"
+            name="endMessageId"
+            type="number"
+            min={1}
+            placeholder="100"
+            required={selection === "range"}
+            aria-describedby="endMessageId-description"
+          />
+          <FieldDescription id="endMessageId-description">
             {selection === "search"
               ? "Optional bounds for search results (inclusive max ID)."
               : "Last message ID in the transfer range (inclusive)."}

@@ -16,7 +16,7 @@ import {
   JOBS_POLL_INTERVAL_MS,
   type JobsOverviewSnapshot,
 } from "@/lib/jobs-snapshots";
-import { formatJobDateTime, jobStatusVariant } from "@/lib/job-ui";
+import { formatJobDateTime, formatMessageBounds, jobStatusVariant } from "@/lib/job-ui";
 
 function workerBadgeVariant(worker: { status: string } | null, stale: boolean) {
   if (!worker || stale) {
@@ -126,7 +126,8 @@ export function JobsLiveDashboard({ initial }: JobsLiveDashboardProps) {
                           <Badge variant="slate">{job.mode}</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {job.account_label ?? "Deleted account"} · {job.start_message_id}–{job.end_message_id} ·{" "}
+                          {job.account_label ?? "Deleted account"} ·{" "}
+                          {formatMessageBounds(job.selection, job.start_message_id, job.end_message_id)} ·{" "}
                           {job.processed_messages}/{job.total_messages} ({job.progress_percent}%)
                         </p>
                         <div className="h-1.5 max-w-md overflow-hidden rounded-full bg-secondary">

@@ -22,7 +22,7 @@ import {
   JOBS_POLL_INTERVAL_MS,
   type JobDetailSnapshot,
 } from "@/lib/jobs-snapshots";
-import { formatJobDateTime, jobStatusVariant } from "@/lib/job-ui";
+import { formatJobDateTime, formatMessageBounds, jobStatusVariant } from "@/lib/job-ui";
 import { normalizeAllowedMediaType } from "@/lib/media-types";
 import type { AllowedMediaType } from "@/lib/types";
 
@@ -113,7 +113,7 @@ export function JobDetailLive({ initial }: JobDetailLiveProps) {
         />
         <StatTile
           label={job.selection === "search" ? "Search bounds" : "Range"}
-          value={`${job.start_message_id}–${job.end_message_id}`}
+          value={formatMessageBounds(job.selection, job.start_message_id, job.end_message_id)}
           hint={
             job.selection === "search"
               ? job.search_query
