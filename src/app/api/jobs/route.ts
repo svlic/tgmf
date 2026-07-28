@@ -21,6 +21,8 @@ export async function POST(request: Request) {
         targetChannelRef: payload.targetChannelRef,
         startMessageId: payload.startMessageId,
         endMessageId: payload.endMessageId,
+        selection: payload.selection,
+        searchQuery: payload.searchQuery,
         jobOrder: payload.jobOrder,
         mode: payload.mode,
         albumStrategy: payload.albumStrategy,

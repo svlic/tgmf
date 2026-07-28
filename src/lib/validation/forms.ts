@@ -51,6 +51,8 @@ export const jobSchema = z
     targetChannelRef: z.string().min(1),
     startMessageId: z.coerce.number().int().positive(),
     endMessageId: z.coerce.number().int().positive(),
+    selection: z.enum(["range", "search"]).default("range"),
+    searchQuery: z.string().trim().max(512).optional().default(""),
     jobOrder: z.enum(["asc", "desc"]),
     mode: z.enum(["forward", "copy"]),
     albumStrategy: z.enum(["full_group", "captioned_only"]),
@@ -64,4 +66,8 @@ export const jobSchema = z
   .refine((value) => value.startMessageId <= value.endMessageId, {
     message: "startMessageId must be less than or equal to endMessageId",
     path: ["startMessageId"],
+  })
+  .refine((value) => value.selection !== "search" || value.searchQuery.trim().length > 0, {
+    message: "searchQuery is required when selection is search",
+    path: ["searchQuery"],
   });

@@ -32,6 +32,8 @@ export type JobInput = {
   targetChannelRef: string;
   startMessageId: number;
   endMessageId: number;
+  selection?: SyncJobRow["selection"];
+  searchQuery?: string | null;
   jobOrder: SyncJobRow["job_order"];
   mode: SyncJobRow["mode"];
   albumStrategy: SyncJobRow["album_strategy"];
@@ -272,21 +274,27 @@ export const jobRepository = {
       throw new Error("startMessageId must be less than or equal to endMessageId");
     }
 
-    const totalMessages = input.endMessageId - input.startMessageId + 1;
-    const nextMessageId = input.jobOrder === "asc" ? input.startMessageId : input.endMessageId;
+    const selection = input.selection ?? "range";
+    const searchQuery = selection === "search" ? (input.searchQuery?.trim() || null) : null;
+    if (selection === "search" && !searchQuery) {
+      throw new Error("searchQuery is required when selection is search");
+    }
+
+    const totalMessages = selection === "search" ? 0 : input.endMessageId - input.startMessageId + 1;
+    const nextMessageId =
+      selection === "search" ? null : input.jobOrder === "asc" ? input.startMessageId : input.endMessageId;
     const id = generateId("job");
     const now = nowIso();
 
     db().prepare(
       `INSERT INTO sync_jobs (
         id, account_id, source_channel_ref, target_channel_ref, start_message_id, end_message_id,
-        job_order, mode, album_strategy, allowed_media_types, keyword_whitelist, keyword_blacklist,
-        regex_whitelist, regex_blacklist, delay_seconds, status, total_messages, processed_messages,
-        succeeded_messages, skipped_messages, failed_messages, next_message_id, worker_id,
-        last_error_code, last_error_message, cancel_requested_at, started_at, finished_at, created_at,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
-
+        selection, search_query, job_order, mode, album_strategy, allowed_media_types, keyword_whitelist,
+        keyword_blacklist, regex_whitelist, regex_blacklist, delay_seconds, status, total_messages,
+        processed_messages, succeeded_messages, skipped_messages, failed_messages, next_message_id,
+        worker_id, last_error_code, last_error_message, cancel_requested_at, started_at, finished_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 0, 0, 0, 0, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
     ).run(
       id,
       input.accountId,
@@ -294,6 +302,8 @@ export const jobRepository = {
       input.targetChannelRef,
       input.startMessageId,
       input.endMessageId,
+      selection,
+      searchQuery,
       input.jobOrder,
       input.mode,
       input.albumStrategy,
@@ -320,14 +330,16 @@ export const jobRepository = {
     const updates = extras ?? {};
 
     db().prepare(
-      `UPDATE sync_jobs SET status = ?, worker_id = ?, next_message_id = ?, processed_messages = ?,
-       succeeded_messages = ?, skipped_messages = ?, failed_messages = ?, last_error_code = ?,
-       last_error_message = ?, cancel_requested_at = ?, started_at = ?, finished_at = ?, updated_at = ?
+      `UPDATE sync_jobs SET status = ?, worker_id = ?, next_message_id = ?, total_messages = ?,
+       processed_messages = ?, succeeded_messages = ?, skipped_messages = ?, failed_messages = ?,
+       last_error_code = ?, last_error_message = ?, cancel_requested_at = ?, started_at = ?,
+       finished_at = ?, updated_at = ?
        WHERE id = ?`,
     ).run(
       status,
       "worker_id" in updates ? updates.worker_id : existing.worker_id,
       "next_message_id" in updates ? updates.next_message_id : existing.next_message_id,
+      "total_messages" in updates ? updates.total_messages : existing.total_messages,
       "processed_messages" in updates ? updates.processed_messages : existing.processed_messages,
       "succeeded_messages" in updates ? updates.succeeded_messages : existing.succeeded_messages,
       "skipped_messages" in updates ? updates.skipped_messages : existing.skipped_messages,
@@ -340,6 +352,14 @@ export const jobRepository = {
       nowIso(),
       id,
     );
+    return this.getById(id);
+  },
+  setMessagePlan(id: string, payload: { totalMessages: number; nextMessageId: number | null }) {
+    db().prepare(
+      `UPDATE sync_jobs
+       SET total_messages = ?, next_message_id = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(payload.totalMessages, payload.nextMessageId, nowIso(), id);
     return this.getById(id);
   },
   requestStart(id: string) {

@@ -44,6 +44,72 @@ afterAll(() => {
   rmSync(databasePath, { force: true });
 });
 
+describe("jobRepository.create search selection", () => {
+  it("stores search selection with zero total and null next id until plan is set", () => {
+    const account = accountRepository.create({ label: "search-acct", phoneNumber: "+10000000099" });
+    if (!account) {
+      throw new Error("Failed to create test account");
+    }
+
+    const job = jobRepository.create({
+      accountId: account.id,
+      sourceChannelRef: "source",
+      targetChannelRef: "target",
+      startMessageId: 10,
+      endMessageId: 50,
+      selection: "search",
+      searchQuery: "keyword",
+      jobOrder: "desc",
+      mode: "forward",
+      albumStrategy: "full_group",
+    });
+    if (!job) {
+      throw new Error("Failed to create search job");
+    }
+
+    expect(job).toMatchObject({
+      selection: "search",
+      search_query: "keyword",
+      total_messages: 0,
+      next_message_id: null,
+      start_message_id: 10,
+      end_message_id: 50,
+      job_order: "desc",
+    });
+
+    const planned = jobRepository.setMessagePlan(job.id, {
+      totalMessages: 3,
+      nextMessageId: 40,
+    });
+    expect(planned).toMatchObject({
+      total_messages: 3,
+      next_message_id: 40,
+    });
+  });
+
+  it("rejects search selection without a query", () => {
+    const account = accountRepository.create({ label: "search-missing", phoneNumber: "+10000000098" });
+    if (!account) {
+      throw new Error("Failed to create test account");
+    }
+
+    expect(() =>
+      jobRepository.create({
+        accountId: account.id,
+        sourceChannelRef: "source",
+        targetChannelRef: "target",
+        startMessageId: 1,
+        endMessageId: 2,
+        selection: "search",
+        searchQuery: "  ",
+        jobOrder: "asc",
+        mode: "copy",
+        albumStrategy: "captioned_only",
+      }),
+    ).toThrow(/searchQuery is required/i);
+  });
+});
+
 describe("account-scoped Telegram flood waits", () => {
   it("claims another account's job while the oldest account is cooling down", () => {
     const coolingAccount = accountRepository.create({ label: "cooling", phoneNumber: "+10000000001" });
