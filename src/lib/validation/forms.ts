@@ -43,14 +43,18 @@ const filterListSchema = z.array(z.string().trim().min(1).max(500)).max(MAX_FILT
 const regexFilterListSchema = filterListSchema.refine((patterns) => patterns.every(isSafeRegexFilter), {
   message: "Every regex filter must be valid and avoid nested quantifiers",
 });
+const optionalMessageIdSchema = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  z.coerce.number().int().positive().optional(),
+);
 
 export const jobSchema = z
   .object({
     accountId: z.string().min(1),
     sourceChannelRef: z.string().min(1),
     targetChannelRef: z.string().min(1),
-    startMessageId: z.coerce.number().int().positive(),
-    endMessageId: z.coerce.number().int().positive(),
+    startMessageId: optionalMessageIdSchema,
+    endMessageId: optionalMessageIdSchema,
     selection: z.enum(["range", "search"]).default("range"),
     searchQuery: z.string().trim().max(512).optional().default(""),
     jobOrder: z.enum(["asc", "desc"]),
@@ -63,11 +67,33 @@ export const jobSchema = z
     regexBlacklist: regexFilterListSchema,
     delaySeconds: z.coerce.number().int().min(0).max(600).default(DEFAULT_DELAY_SECONDS),
   })
-  .refine((value) => value.startMessageId <= value.endMessageId, {
-    message: "startMessageId must be less than or equal to endMessageId",
-    path: ["startMessageId"],
-  })
-  .refine((value) => value.selection !== "search" || value.searchQuery.trim().length > 0, {
-    message: "searchQuery is required when selection is search",
-    path: ["searchQuery"],
+  .superRefine((value, context) => {
+    if (value.selection === "range") {
+      if (value.startMessageId === undefined) {
+        context.addIssue({ code: "custom", message: "startMessageId is required for an ID range", path: ["startMessageId"] });
+      }
+      if (value.endMessageId === undefined) {
+        context.addIssue({ code: "custom", message: "endMessageId is required for an ID range", path: ["endMessageId"] });
+      }
+    }
+
+    if (
+      value.startMessageId !== undefined &&
+      value.endMessageId !== undefined &&
+      value.startMessageId > value.endMessageId
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "startMessageId must be less than or equal to endMessageId",
+        path: ["startMessageId"],
+      });
+    }
+
+    if (value.selection === "search" && value.searchQuery.trim().length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "searchQuery is required when selection is search",
+        path: ["searchQuery"],
+      });
+    }
   });
