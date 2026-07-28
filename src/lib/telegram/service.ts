@@ -20,6 +20,7 @@ import {
   parseMessageTextFilterFromJob,
 } from "@/lib/telegram/message-text-filter";
 import { partitionCaptionedAlbumMessages } from "@/lib/telegram/album-policy";
+import { collectSearchMessageIds } from "@/lib/telegram/search-message-ids";
 import {
   classifyCopyDelivery,
   missingTargetMessageErrorReason,
@@ -700,7 +701,41 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
   try {
     await client.connect();
-    const messageIds = buildMessageSequence(job);
+    const messageIds =
+      job.selection === "search"
+        ? await (async () => {
+            const searchQuery = job.search_query?.trim() ?? "";
+            if (!searchQuery) {
+              throw new Error("search_query is required when selection is search");
+            }
+
+            const collectedIds = await collectSearchMessageIds({
+              searchQuery,
+              startMessageId: job.start_message_id,
+              endMessageId: job.end_message_id,
+              jobOrder: job.job_order,
+              fetchMessages: async (params) => {
+                const fetched = await telegramAttempt("read", () =>
+                  client.getMessages(job.source_channel_ref, {
+                    search: params.search,
+                    minId: params.minId,
+                    maxId: params.maxId,
+                    reverse: params.reverse,
+                  }),
+                );
+                return Array.from(fetched as Iterable<MessageLike | null | undefined>).flatMap((message) =>
+                  message ? [message] : [],
+                );
+              },
+            });
+
+            jobRepository.setMessagePlan(job.id, {
+              totalMessages: collectedIds.length,
+              nextMessageId: collectedIds[0] ?? null,
+            });
+            return collectedIds;
+          })()
+        : buildMessageSequence(job);
     const mediaFilter = parseAllowedMediaTypes(job.allowed_media_types);
     const textFilter = parseMessageTextFilterFromJob(job);
     const groupedMessagesCache = new Map<string, MessageLike[]>();
