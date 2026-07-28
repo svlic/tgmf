@@ -39,6 +39,26 @@ describe("collectSearchMessageIds", () => {
     expect(ids).toEqual([10, 15, 20]);
   });
 
+  it("searches without ID bounds when both bounds are omitted", async () => {
+    const fetchMessages = vi.fn(async () => [{ id: 2 }, { id: 9 }]);
+
+    const ids = await collectSearchMessageIds({
+      searchQuery: "unbounded",
+      startMessageId: 0,
+      endMessageId: 0,
+      jobOrder: "asc",
+      fetchMessages,
+    });
+
+    expect(fetchMessages).toHaveBeenCalledWith({
+      search: "unbounded",
+      minId: 0,
+      maxId: 0,
+      reverse: true,
+    });
+    expect(ids).toEqual([2, 9]);
+  });
+
   it("orders descending when job order is desc", async () => {
     const ids = await collectSearchMessageIds({
       searchQuery: "world",

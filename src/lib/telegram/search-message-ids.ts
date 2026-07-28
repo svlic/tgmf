@@ -42,14 +42,16 @@ export async function collectSearchMessageIds(input: {
   if (!searchQuery) {
     throw new Error("searchQuery is required when collecting search message IDs");
   }
-  if (input.startMessageId > input.endMessageId) {
+  const hasStartBound = input.startMessageId > 0;
+  const hasEndBound = input.endMessageId > 0;
+  if (hasStartBound && hasEndBound && input.startMessageId > input.endMessageId) {
     throw new Error("startMessageId must be less than or equal to endMessageId");
   }
 
   const messages = await input.fetchMessages({
     search: searchQuery,
-    minId: Math.max(0, input.startMessageId - 1),
-    maxId: input.endMessageId + 1,
+    minId: hasStartBound ? input.startMessageId - 1 : 0,
+    maxId: hasEndBound ? input.endMessageId + 1 : 0,
     reverse: input.jobOrder === "asc",
   });
 
@@ -58,7 +60,7 @@ export async function collectSearchMessageIds(input: {
     if (typeof message.id !== "number") {
       continue;
     }
-    if (message.id < input.startMessageId || message.id > input.endMessageId) {
+    if ((hasStartBound && message.id < input.startMessageId) || (hasEndBound && message.id > input.endMessageId)) {
       continue;
     }
     ids.push(message.id);
