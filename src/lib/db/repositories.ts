@@ -45,21 +45,17 @@ export type JobInput = {
   delaySeconds?: number;
 };
 
-function db() {
-  return getDb();
-}
-
 export const accountRepository = {
   list(): TelegramAccountRow[] {
-    return db().prepare(`SELECT * FROM telegram_accounts ORDER BY updated_at DESC`).all() as TelegramAccountRow[];
+    return getDb().prepare(`SELECT * FROM telegram_accounts ORDER BY updated_at DESC`).all() as TelegramAccountRow[];
   },
   getById(id: string) {
     return (
-      (db().prepare(`SELECT * FROM telegram_accounts WHERE id = ?`).get(id) as TelegramAccountRow | undefined) ?? null
+      (getDb().prepare(`SELECT * FROM telegram_accounts WHERE id = ?`).get(id) as TelegramAccountRow | undefined) ?? null
     );
   },
   recordTelegramSuccess(id: string, configuredIntervalMs: number) {
-    db().prepare(
+    getDb().prepare(
       `UPDATE telegram_accounts
        SET adaptive_interval_ms = MAX(?, adaptive_interval_ms - ?), updated_at = ?
        WHERE id = ?`,
@@ -68,7 +64,7 @@ export const accountRepository = {
   create(input: AccountInput) {
     const id = generateId("acct");
     const now = nowIso();
-    db().prepare(
+    getDb().prepare(
       `INSERT INTO telegram_accounts (
         id, label, phone_number, api_id_override, api_hash_override_encrypted,
         session_encrypted, login_state, login_hint, telegram_user_id, created_at, updated_at, last_connected_at
@@ -85,7 +81,7 @@ export const accountRepository = {
     return this.getById(id);
   },
   update(id: string, input: AccountInput) {
-    db().prepare(
+    getDb().prepare(
       `UPDATE telegram_accounts
        SET label = ?, phone_number = ?, api_id_override = ?, api_hash_override_encrypted = ?, updated_at = ?
        WHERE id = ?`,
@@ -100,25 +96,25 @@ export const accountRepository = {
     return this.getById(id);
   },
   delete(id: string) {
-    const result = db().prepare(`DELETE FROM telegram_accounts WHERE id = ?`).run(id);
+    const result = getDb().prepare(`DELETE FROM telegram_accounts WHERE id = ?`).run(id);
     return result.changes > 0;
   },
   saveSession(id: string, session: string, loginState: TelegramAccountRow["login_state"], telegramUserId?: string | null) {
-    db().prepare(
+    getDb().prepare(
       `UPDATE telegram_accounts
        SET session_encrypted = ?, login_state = ?, telegram_user_id = ?, updated_at = ?, last_connected_at = ?
        WHERE id = ?`,
     ).run(encryptString(session), loginState, telegramUserId ?? null, nowIso(), nowIso(), id);
   },
   clearSession(id: string, loginState: TelegramAccountRow["login_state"] = "logged_out") {
-    db().prepare(
+    getDb().prepare(
       `UPDATE telegram_accounts
        SET session_encrypted = NULL, login_state = ?, login_hint = NULL, updated_at = ?
        WHERE id = ?`,
     ).run(loginState, nowIso(), id);
   },
   setLoginState(id: string, loginState: TelegramAccountRow["login_state"], loginHint?: string | null) {
-    db().prepare(`UPDATE telegram_accounts SET login_state = ?, login_hint = ?, updated_at = ? WHERE id = ?`).run(
+    getDb().prepare(`UPDATE telegram_accounts SET login_state = ?, login_hint = ?, updated_at = ? WHERE id = ?`).run(
       loginState,
       loginHint ?? null,
       nowIso(),
@@ -155,7 +151,7 @@ export const accountRepository = {
 export const telegramLoginSessionRepository = {
   save(input: { accountId: string; phoneNumber: string; phoneCodeHash: string; sessionString: string }) {
     const now = nowIso();
-    db().prepare(
+    getDb().prepare(
       `INSERT INTO telegram_login_sessions (
         account_id, phone_number, phone_code_hash_encrypted, session_encrypted, started_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?)
@@ -168,7 +164,7 @@ export const telegramLoginSessionRepository = {
     ).run(input.accountId, input.phoneNumber, encryptString(input.phoneCodeHash), encryptString(input.sessionString), now, now);
   },
   getActive(accountId: string) {
-    const row = db().prepare(`SELECT * FROM telegram_login_sessions WHERE account_id = ?`).get(accountId) as
+    const row = getDb().prepare(`SELECT * FROM telegram_login_sessions WHERE account_id = ?`).get(accountId) as
       | TelegramLoginSessionRow
       | undefined;
     if (!row) {
@@ -189,7 +185,7 @@ export const telegramLoginSessionRepository = {
     };
   },
   delete(accountId: string) {
-    db().prepare(`DELETE FROM telegram_login_sessions WHERE account_id = ?`).run(accountId);
+    getDb().prepare(`DELETE FROM telegram_login_sessions WHERE account_id = ?`).run(accountId);
   },
 };
 
@@ -202,7 +198,7 @@ export const loginAttemptRepository = {
     userAgent?: string | null;
     reason?: string | null;
   }) {
-    db().prepare(
+    getDb().prepare(
       `INSERT INTO login_attempts (id, account_id, phone_number, status, ip_address, user_agent, reason, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
@@ -217,7 +213,7 @@ export const loginAttemptRepository = {
     );
   },
   countRecentFailures(ipAddress: string) {
-    const row = db()
+    const row = getDb()
       .prepare(
         `SELECT COUNT(*) as count FROM login_attempts
          WHERE ip_address = ? AND status = 'failure' AND created_at >= datetime('now', ?)`,
@@ -235,9 +231,9 @@ export const loginAttemptRepository = {
 export const dialogRepository = {
   replaceForAccount(accountId: string, dialogs: Omit<DialogCacheRow, "id" | "account_id" | "fetched_at">[]) {
     const now = nowIso();
-    const transaction = db().transaction(() => {
-      db().prepare(`DELETE FROM dialog_cache WHERE account_id = ?`).run(accountId);
-      const stmt = db().prepare(
+    const transaction = getDb().transaction(() => {
+      getDb().prepare(`DELETE FROM dialog_cache WHERE account_id = ?`).run(accountId);
+      const stmt = getDb().prepare(
         `INSERT INTO dialog_cache (id, account_id, peer_id, title, username, entity_type, is_public, raw_json, fetched_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
@@ -258,16 +254,16 @@ export const dialogRepository = {
     transaction();
   },
   listForAccount(accountId: string) {
-    return db().prepare(`SELECT * FROM dialog_cache WHERE account_id = ? ORDER BY title ASC`).all(accountId) as DialogCacheRow[];
+    return getDb().prepare(`SELECT * FROM dialog_cache WHERE account_id = ? ORDER BY title ASC`).all(accountId) as DialogCacheRow[];
   },
 };
 
 export const jobRepository = {
   list() {
-    return db().prepare(`SELECT * FROM sync_jobs ORDER BY created_at DESC`).all() as SyncJobRow[];
+    return getDb().prepare(`SELECT * FROM sync_jobs ORDER BY created_at DESC`).all() as SyncJobRow[];
   },
   getById(id: string) {
-    return (db().prepare(`SELECT * FROM sync_jobs WHERE id = ?`).get(id) as SyncJobRow | undefined) ?? null;
+    return (getDb().prepare(`SELECT * FROM sync_jobs WHERE id = ?`).get(id) as SyncJobRow | undefined) ?? null;
   },
   create(input: JobInput) {
     const selection = input.selection ?? "range";
@@ -300,7 +296,7 @@ export const jobRepository = {
     const id = generateId("job");
     const now = nowIso();
 
-    db().prepare(
+    getDb().prepare(
       `INSERT INTO sync_jobs (
         id, account_id, source_channel_ref, target_channel_ref, start_message_id, end_message_id,
         selection, search_query, job_order, mode, album_strategy, allowed_media_types, keyword_whitelist,
@@ -343,7 +339,7 @@ export const jobRepository = {
 
     const updates = extras ?? {};
 
-    db().prepare(
+    getDb().prepare(
       `UPDATE sync_jobs SET status = ?, worker_id = ?, next_message_id = ?, total_messages = ?,
        processed_messages = ?, succeeded_messages = ?, skipped_messages = ?, failed_messages = ?,
        last_error_code = ?, last_error_message = ?, cancel_requested_at = ?, started_at = ?,
@@ -369,7 +365,7 @@ export const jobRepository = {
     return this.getById(id);
   },
   setMessagePlan(id: string, payload: { totalMessages: number; nextMessageId: number | null }) {
-    db().prepare(
+    getDb().prepare(
       `UPDATE sync_jobs
        SET total_messages = ?, next_message_id = ?, updated_at = ?
        WHERE id = ?`,
@@ -377,7 +373,7 @@ export const jobRepository = {
     return this.getById(id);
   },
   requestStart(id: string) {
-    const result = db().prepare(
+    const result = getDb().prepare(
       `UPDATE sync_jobs
        SET status = 'pending', updated_at = ?
        WHERE id = ? AND status = 'draft'`,
@@ -411,11 +407,11 @@ export const jobRepository = {
     });
   },
   claimNext(workerId: string) {
-    return db().transaction(() => {
+    return getDb().transaction(() => {
       const now = nowIso();
       const staleBefore = new Date(Date.now() - WORKER_HEARTBEAT_STALE_MS).toISOString();
 
-      db()
+      getDb()
         .prepare(
           `UPDATE sync_jobs
            SET status = 'pending',
@@ -436,7 +432,7 @@ export const jobRepository = {
         )
         .run(now, staleBefore);
 
-      const candidate = db()
+      const candidate = getDb()
         .prepare(
           `SELECT sync_jobs.id
            FROM sync_jobs
@@ -456,7 +452,7 @@ export const jobRepository = {
         return null;
       }
 
-      const result = db()
+      const result = getDb()
         .prepare(
           `UPDATE sync_jobs
            SET status = 'running', worker_id = ?, started_at = COALESCE(started_at, ?), updated_at = ?
@@ -472,7 +468,7 @@ export const jobRepository = {
     })();
   },
   failIfRunningByWorker(input: { jobId: string; workerId: string; errorMessage: string }) {
-    const result = db().prepare(
+    const result = getDb().prepare(
       `UPDATE sync_jobs
        SET status = 'failed', finished_at = ?, last_error_code = 'worker_job_failed',
            last_error_message = ?, updated_at = ?
@@ -490,8 +486,8 @@ export const jobRepository = {
     const now = new Date();
     const updatedAt = now.toISOString();
     const floodWaitUntil = new Date(now.getTime() + input.waitSeconds * 1000).toISOString();
-    return db().transaction(() => {
-      const jobUpdate = db().prepare(
+    return getDb().transaction(() => {
+      const jobUpdate = getDb().prepare(
         `UPDATE sync_jobs
          SET status = 'pending', worker_id = NULL, last_error_code = 'telegram_flood_wait',
              last_error_message = ?, flood_wait_events = flood_wait_events + 1, updated_at = ?
@@ -514,7 +510,7 @@ export const jobRepository = {
         Math.max(account.adaptive_interval_ms, configuredIntervalMs) * 2,
         300_000,
       );
-      db().prepare(
+      getDb().prepare(
         `UPDATE telegram_accounts
          SET flood_wait_until = CASE
                WHEN flood_wait_until IS NULL OR flood_wait_until < ? THEN ?
@@ -524,7 +520,7 @@ export const jobRepository = {
              updated_at = ?
          WHERE id = ?`,
       ).run(floodWaitUntil, floodWaitUntil, adaptiveIntervalMs, updatedAt, input.accountId);
-      db().prepare(
+      getDb().prepare(
         `INSERT INTO job_events (
           id, job_id, event_type, status, details, wait_seconds, adaptive_interval_ms, created_at
         ) VALUES (?, ?, 'flood_wait', 'warn', ?, ?, ?, ?)`,
@@ -546,7 +542,7 @@ export const jobRepository = {
     attemptedAt: string;
     forward: boolean;
   }) {
-    const result = db().prepare(
+    const result = getDb().prepare(
       `UPDATE sync_jobs
        SET send_attempts = send_attempts + 1,
            forward_attempts = forward_attempts + ?,
@@ -585,7 +581,7 @@ export const jobRepository = {
     const shouldUpdateLastErrorCode = payload.lastErrorCode !== undefined;
     const shouldUpdateLastErrorMessage = payload.lastErrorMessage !== undefined;
 
-    const result = db().prepare(
+    const result = getDb().prepare(
       `UPDATE sync_jobs
        SET next_message_id = ?,
            processed_messages = processed_messages + ?,
@@ -624,11 +620,11 @@ export const jobRepository = {
 
 export const jobEventRepository = {
   countForJob(jobId: string) {
-    const row = db().prepare(`SELECT COUNT(*) AS count FROM job_events WHERE job_id = ?`).get(jobId) as { count: number };
+    const row = getDb().prepare(`SELECT COUNT(*) AS count FROM job_events WHERE job_id = ?`).get(jobId) as { count: number };
     return row.count;
   },
   listLatestForJob(jobId: string, limit: number) {
-    return db()
+    return getDb()
       .prepare(
         `SELECT * FROM job_events
          WHERE job_id = ? AND event_type = 'flood_wait' AND status = 'warn'
@@ -640,14 +636,14 @@ export const jobEventRepository = {
 
 export const transferRecordRepository = {
   countForJob(jobId: string) {
-    const row = db()
+    const row = getDb()
       .prepare(`SELECT COUNT(*) AS count FROM message_transfer_records WHERE job_id = ?`)
       .get(jobId) as { count: number };
     return row.count;
   },
 
   listLatestForJob(jobId: string, limit: number) {
-    return db()
+    return getDb()
       .prepare(
         `SELECT * FROM (
           SELECT * FROM message_transfer_records
@@ -661,7 +657,7 @@ export const transferRecordRepository = {
 
   getByJobAndSourceMessageId(jobId: string, sourceMessageId: number) {
     return (
-      (db()
+      (getDb()
         .prepare(`SELECT * FROM message_transfer_records WHERE job_id = ? AND source_message_id = ?`)
         .get(jobId, sourceMessageId) as MessageTransferRecordRow | undefined) ?? null
     );
@@ -675,7 +671,7 @@ export const transferRecordRepository = {
     status: MessageTransferRecordRow["status"];
     errorReason?: string | null;
   }) {
-    db().prepare(
+    getDb().prepare(
       `INSERT INTO message_transfer_records (
         id, job_id, source_message_id, target_message_id, media_group_id, status, error_reason, processed_at, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -701,7 +697,7 @@ export const transferRecordRepository = {
 
 export const workerRepository = {
   heartbeat(workerId: string, status: WorkerHeartbeatRow["status"], currentJobId?: string | null, details?: unknown) {
-    db().prepare(
+    getDb().prepare(
       `INSERT INTO worker_heartbeats (worker_id, status, current_job_id, heartbeat_at, started_at, details_json)
        VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(worker_id)
@@ -710,7 +706,7 @@ export const workerRepository = {
     ).run(workerId, status, currentJobId ?? null, nowIso(), nowIso(), details ? JSON.stringify(details) : null);
   },
   getLatest() {
-    return db().prepare(`SELECT * FROM worker_heartbeats ORDER BY heartbeat_at DESC LIMIT 1`).get() as
+    return getDb().prepare(`SELECT * FROM worker_heartbeats ORDER BY heartbeat_at DESC LIMIT 1`).get() as
       | WorkerHeartbeatRow
       | undefined;
   },
