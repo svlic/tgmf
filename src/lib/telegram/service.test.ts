@@ -52,6 +52,22 @@ describe("mapForwardResponse", () => {
       { sourceMessage: sourceMessages[2], targetMessageId: null },
     ]);
   });
+
+  it("maps GramJS nested batch responses to their source messages", () => {
+    // Given
+    const sourceMessages = [{ id: 10 }, { id: 11 }];
+    const gramJsResponse = [[{ id: 100 }, { id: 101 }]];
+
+    // When
+    const result = mapForwardResponse(sourceMessages, gramJsResponse);
+
+    // Then
+    expect(result.responseCount).toBe(2);
+    expect(result.sent).toEqual([
+      { sourceMessage: sourceMessages[0], targetMessageId: 100 },
+      { sourceMessage: sourceMessages[1], targetMessageId: 101 },
+    ]);
+  });
 });
 
 describe("shouldRecordTelegramSuccess", () => {

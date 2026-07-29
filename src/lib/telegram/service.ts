@@ -542,18 +542,19 @@ async function fetchAlbumMessages(
 }
 
 export function mapForwardResponse(
-  forwardableMessages: Array<MessageLike & { id: number }>,
-  sentMessages: Array<{ id?: number }>,
+  forwardableMessages: ReadonlyArray<MessageLike & { id: number }>,
+  sentMessages: ReadonlyArray<ReadonlyArray<{ readonly id?: number }> | { readonly id?: number }>,
 ): Pick<ForwardResult, "sent" | "responseCount"> {
+  const normalizedMessages = sentMessages.flatMap((message) => (Array.isArray(message) ? message : [message]));
   return {
     sent: forwardableMessages.map((sourceMessage, index) => {
-      const targetMessageId = sentMessages[index]?.id;
+      const targetMessageId = normalizedMessages[index]?.id;
       return {
         sourceMessage,
         targetMessageId: typeof targetMessageId === "number" ? targetMessageId : null,
       };
     }),
-    responseCount: sentMessages.length,
+    responseCount: normalizedMessages.length,
   };
 }
 
