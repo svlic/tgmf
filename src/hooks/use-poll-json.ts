@@ -22,14 +22,7 @@ export function usePollJson<T>({
 }: UsePollJsonOptions<T>) {
   const [data, setData] = useState<T>(initialData);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const dataRef = useRef(initialData);
   const inFlightRef = useRef<Promise<void> | null>(null);
-  const requestGenerationRef = useRef(0);
-
-  const applyPayload = useCallback((next: T) => {
-    dataRef.current = next;
-    setData(next);
-  }, []);
 
   const fetchOnce = useCallback(async () => {
     if (document.visibilityState === "hidden") {
@@ -40,16 +33,9 @@ export function usePollJson<T>({
       return inFlightRef.current;
     }
 
-    const generation = requestGenerationRef.current + 1;
-    requestGenerationRef.current = generation;
-
     const run = async () => {
       try {
         const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
-        if (generation !== requestGenerationRef.current) {
-          return;
-        }
-
         const contentType = response.headers.get("content-type") || "";
 
         if (!contentType.includes("application/json")) {
@@ -60,9 +46,6 @@ export function usePollJson<T>({
         }
 
         const body = (await response.json()) as JsonEnvelope<T>;
-        if (generation !== requestGenerationRef.current) {
-          return;
-        }
 
         if (!body.ok) {
           setFetchError(body.error);
@@ -70,11 +53,8 @@ export function usePollJson<T>({
         }
 
         setFetchError(null);
-        applyPayload(body.data);
+        setData(body.data);
       } catch (error) {
-        if (generation !== requestGenerationRef.current) {
-          return;
-        }
         setFetchError(error instanceof Error ? error.message : "Failed to refresh");
       }
     };
@@ -86,7 +66,7 @@ export function usePollJson<T>({
     });
     inFlightRef.current = promise;
     return promise;
-  }, [applyPayload, url]);
+  }, [url]);
 
   const polling = shouldPoll ? shouldPoll(data) : true;
 
