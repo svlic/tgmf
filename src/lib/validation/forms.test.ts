@@ -37,4 +37,17 @@ describe("jobSchema message selection", () => {
       }),
     ).toThrow(/startMessageId is required/i);
   });
+
+  it("trims whitespace from channel refs", () => {
+    const result = jobSchema.parse({
+      ...baseJob,
+      sourceChannelRef: "  @source  ",
+      targetChannelRef: "\t-100123\n",
+      selection: "search",
+      searchQuery: "keyword",
+    });
+
+    expect(result.sourceChannelRef).toBe("@source");
+    expect(result.targetChannelRef).toBe("-100123");
+  });
 });

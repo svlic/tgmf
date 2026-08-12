@@ -51,8 +51,8 @@ const optionalMessageIdSchema = z.preprocess(
 export const jobSchema = z
   .object({
     accountId: z.string().min(1),
-    sourceChannelRef: z.string().min(1),
-    targetChannelRef: z.string().min(1),
+    sourceChannelRef: z.string().trim().min(1),
+    targetChannelRef: z.string().trim().min(1),
     startMessageId: optionalMessageIdSchema,
     endMessageId: optionalMessageIdSchema,
     selection: z.enum(["range", "search"]).default("range"),

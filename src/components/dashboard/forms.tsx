@@ -247,8 +247,8 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
         const formData = new FormData(event.currentTarget);
         const payload = {
           accountId: selectedAccountId,
-          sourceChannelRef: String(formData.get("sourceChannelRef") || ""),
-          targetChannelRef: String(formData.get("targetChannelRef") || ""),
+          sourceChannelRef: String(formData.get("sourceChannelRef") || "").trim(),
+          targetChannelRef: String(formData.get("targetChannelRef") || "").trim(),
           startMessageId: String(formData.get("startMessageId") || ""),
           endMessageId: String(formData.get("endMessageId") || ""),
           selection: String(formData.get("selection") || "range"),
