@@ -80,21 +80,6 @@ export const accountRepository = {
     );
     return this.getById(id);
   },
-  update(id: string, input: AccountInput) {
-    getDb().prepare(
-      `UPDATE telegram_accounts
-       SET label = ?, phone_number = ?, api_id_override = ?, api_hash_override_encrypted = ?, updated_at = ?
-       WHERE id = ?`,
-    ).run(
-      input.label,
-      input.phoneNumber,
-      input.apiIdOverride || null,
-      input.apiHashOverride ? encryptString(input.apiHashOverride) : null,
-      nowIso(),
-      id,
-    );
-    return this.getById(id);
-  },
   delete(id: string) {
     const result = getDb().prepare(`DELETE FROM telegram_accounts WHERE id = ?`).run(id);
     return result.changes > 0;
@@ -105,13 +90,6 @@ export const accountRepository = {
        SET session_encrypted = ?, login_state = ?, telegram_user_id = ?, updated_at = ?, last_connected_at = ?
        WHERE id = ?`,
     ).run(encryptString(session), loginState, telegramUserId ?? null, nowIso(), nowIso(), id);
-  },
-  clearSession(id: string, loginState: TelegramAccountRow["login_state"] = "logged_out") {
-    getDb().prepare(
-      `UPDATE telegram_accounts
-       SET session_encrypted = NULL, login_state = ?, login_hint = NULL, updated_at = ?
-       WHERE id = ?`,
-    ).run(loginState, nowIso(), id);
   },
   setLoginState(id: string, loginState: TelegramAccountRow["login_state"], loginHint?: string | null) {
     getDb().prepare(`UPDATE telegram_accounts SET login_state = ?, login_hint = ?, updated_at = ? WHERE id = ?`).run(
