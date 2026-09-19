@@ -1,8 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { notifyAccountsMutated } from "@/lib/accounts-client-events";
-import { notifyJobsMutated } from "@/lib/jobs-client-events";
+import { notifyAccountsMutated, notifyJobsMutated } from "@/lib/client-events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
