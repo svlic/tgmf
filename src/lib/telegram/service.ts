@@ -740,7 +740,6 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
     const mediaFilter = parseAllowedMediaTypes(job.allowed_media_types);
     const textFilter = parseMessageTextFilterFromJob(job);
     const groupedMessagesCache = new Map<string, MessageLike[]>();
-    const captionedSelectionCache = new Map<string, ReturnType<typeof partitionCaptionedAlbumMessages<MessageLike>>>();
     const messageCache = new Map<number, MessageLike | null>();
     const messagePrefetchWindow = 50;
     const alreadyTransferredFlushThreshold = 50;
@@ -859,11 +858,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
         let skippedByAlbumPolicy = 0;
         if (job.album_strategy === "captioned_only" && groupedIdKey) {
-          const cachedPartition = captionedSelectionCache.get(groupedIdKey);
-          const partition = cachedPartition ?? partitionCaptionedAlbumMessages(messagesToForward);
-          if (!cachedPartition) {
-            captionedSelectionCache.set(groupedIdKey, partition);
-          }
+          const partition = partitionCaptionedAlbumMessages(messagesToForward);
           if (!partition.selected) {
             partition.skipped.forEach((message) => {
               if (!message.id) {
