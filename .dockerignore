@@ -4,6 +4,8 @@ out
 build
 coverage
 data
+**/app-encryption.key
+**/app-encryption.key.*.tmp
 .env
 .env.local
 .env.development.local

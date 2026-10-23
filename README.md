@@ -40,13 +40,13 @@ cp .env.example .env
 DATABASE_URL=data/app.db
 TELEGRAM_API_ID=
 TELEGRAM_API_HASH=
-APP_ENCRYPTION_KEY=
 ```
 
 说明：
 
 - `TELEGRAM_API_ID` 和 `TELEGRAM_API_HASH`：你的 Telegram API 配置
-- `APP_ENCRYPTION_KEY`：服务端加密密钥，用于加密数据库中的敏感信息，建议使用强随机且长度至少 32 个字符的密钥；升级时请保留原值，以便解密已有 Telegram 会话
+- `APP_ENCRYPTION_KEY`：可选的服务端加密密钥覆盖值，长度至少 32 个字符。未设置或留空时，首次加解密会自动生成密钥并保存到数据库同目录的 `app-encryption.key`，无需手动配置。Web 和 Worker 必须共享这个目录；使用 `:memory:` 数据库时密钥保存在 `data/app-encryption.key`
+- **已有部署如果设置过 `APP_ENCRYPTION_KEY`，升级时必须保留原值**，不会自动迁移到密钥文件。删除或更换原值无法解密旧数据，自动生成的新密钥也无法恢复旧会话
 - `DATABASE_URL`：SQLite 文件路径，默认会落在挂载出来的 `data/` 目录里
 
 ### 2. 准备数据目录
@@ -58,6 +58,8 @@ mkdir -p data
 ```
 
 `docker-compose.yml` 会把宿主机的 `./data` 挂载到容器内的 `/app/data`，因此 Web 和 Worker 会共享同一份数据库文件。
+
+默认密钥文件也保存在这个持久化目录中，权限为仅文件所有者可读写。请将数据库和密钥文件一起备份、一起恢复，不要删除密钥文件；容器重建不应清空该目录。若使用环境变量覆盖密钥，应另外安全备份原值。加密可保护单独泄露的数据库文件，但不能防止数据库和密钥一起泄露。
 
 ### 3. 启动服务
 
