@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { Api } from "telegram/tl";
+import { getDb } from "@/lib/db/client";
+import { accountRepository, jobRepository, transferRecordRepository } from "@/lib/db/repositories";
 import {
   partitionCaptionedAlbumMessages,
   type CaptionSelectableMessage,
@@ -7,9 +10,132 @@ import { getTelegramFloodWaitSeconds } from "@/lib/telegram/flood-wait";
 import {
   filterCopyMessagesPendingTransfer,
   mapForwardResponse,
+  processJob,
   resolveSyncJobFinalStatus,
   shouldRecordTelegramSuccess,
 } from "@/lib/telegram/service";
+
+vi.mock("@/lib/telegram/client", () => ({ createTelegramClient: vi.fn() }));
+import { createTelegramClient } from "@/lib/telegram/client";
+
+describe("processJob album policy", () => {
+  vi.stubEnv("DATABASE_URL", ":memory:");
+  afterAll(() => {
+    getDb().close();
+    vi.unstubAllEnvs();
+  });
+
+  it("preserves source mapping, warnings and diagnostics for a partially mapped album", async () => {
+    const messages = [21, 22, 23].map((id) =>
+      Object.assign(Object.create(Api.Message.prototype), { id, groupedId: "album", message: "caption" }) as Api.Message,
+    );
+    const deliveries: number[][] = [];
+    const client = {
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      getMessages: async () => messages,
+      forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+        deliveries.push(options.messages);
+        return [{ id: 901 }, {}, { id: 703 }];
+      },
+    };
+    vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+    const account = accountRepository.create({ label: "partial", phoneNumber: "+10000000001" })!;
+    const created = jobRepository.create({
+      accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+      startMessageId: 21, endMessageId: 23, mode: "forward", jobOrder: "asc", albumStrategy: "full_group", delaySeconds: 0,
+    })!;
+    const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await processJob(job, "test-worker", () => undefined);
+      expect(deliveries).toEqual([[21, 22, 23]]);
+      expect(jobRepository.getById(job.id)).toMatchObject({
+        status: "completed", succeeded_messages: 2, skipped_messages: 1, failed_messages: 0,
+        local_skips: 0, forward_confirmed: 2, forward_unmapped: 1, send_attempts: 1,
+      });
+      for (const [id, targetId] of [[21, 901], [22, null], [23, 703]]) {
+        expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, id!)).toMatchObject({
+          target_message_id: targetId, media_group_id: "album", status: targetId === null ? "warn" : "sent",
+          error_reason: targetId === null ? "Telegram did not return a target message id" : null,
+        });
+      }
+      expect(warning.mock.calls).toEqual([["Telegram forward response could not be fully mapped", {
+        jobId: job.id, sourceCount: 3, responseCount: 3, mappedCount: 2, unmappedCount: 1,
+        sourceMessageIdSample: [21, 22, 23], sourceMessageIdsOmitted: 0,
+        mappedTargetMessageIdSample: [901, 703], mappedTargetMessageIdsOmitted: 0,
+      }]]);
+      await processJob(job, "test-worker", () => undefined);
+      expect(deliveries).toEqual([[21, 22, 23]]);
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  for (const mode of ["forward", "copy"] as const) {
+    for (const jobOrder of ["asc", "desc"] as const) {
+      it.each(["captioned_only", "full_group"] as const)(`${mode}/${jobOrder}/%s preserves transfers and progress`, async (albumStrategy) => {
+        const messages = [
+          { id: 10, groupedId: "a", message: "" },
+          { id: 11, groupedId: "a", message: "caption" },
+          { id: 12, groupedId: "a", message: "" },
+          { id: 13, groupedId: "b", message: "" },
+          { id: 14, groupedId: "b", message: "   " },
+          { id: 15, message: "standalone" },
+          { id: 16, message: "" },
+        ].map((message) => Object.assign(Object.create(Api.Message.prototype), message) as Api.Message);
+        const deliveries: number[][] = [];
+        const client = {
+          connect: async () => undefined,
+          disconnect: async () => undefined,
+          getMessages: async (_peer: string, options: { ids?: number[] }) =>
+            messages.filter((message) => !options.ids || options.ids.includes(message.id)),
+          forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+            deliveries.push(options.messages);
+            return options.messages.map((id) => ({ id: id + 100 }));
+          },
+          sendMessage: async (_peer: string, options: { message: string }) => {
+            // Copy sends text, so retain that observable payload rather than infer source IDs.
+            copiedTexts.push(options.message);
+            return { id: 200 + copiedTexts.length };
+          },
+        };
+        const copiedTexts: string[] = [];
+        vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+        const account = accountRepository.create({ label: "ablation", phoneNumber: "+10000000000" })!;
+        const created = jobRepository.create({
+          accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+          startMessageId: 10, endMessageId: 16, mode, jobOrder, albumStrategy, delaySeconds: 0,
+        })!;
+        const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+        await processJob(job, "test-worker", () => undefined);
+
+        const captionedOnly = albumStrategy === "captioned_only";
+        const sentIds = captionedOnly ? [11, 15, 16] : [10, 11, 12, 13, 14, 15, 16];
+        expect(jobRepository.getById(job.id)).toMatchObject({
+          status: "completed", next_message_id: null, failed_messages: 0,
+          succeeded_messages: sentIds.length, skipped_messages: 7 - sentIds.length,
+          send_attempts: mode === "copy" ? sentIds.length : captionedOnly ? 3 : 4,
+        });
+        for (const message of messages) {
+          const sent = sentIds.includes(message.id);
+          expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, message.id)).toMatchObject({
+            status: sent ? "sent" : "skipped",
+            media_group_id: message.groupedId ?? null,
+            error_reason: sent ? null : "Skipped by captioned_only policy",
+          });
+        }
+        if (mode === "forward") {
+          const expected = captionedOnly ? [[11], [15], [16]] : [[10, 11, 12], [13, 14], [15], [16]];
+          expect(deliveries).toEqual(jobOrder === "asc" ? expected : expected.reverse());
+        } else {
+          const expected = captionedOnly ? ["caption", "standalone", ""] : ["", "caption", "", "", "   ", "standalone", ""];
+          expect(copiedTexts).toEqual(jobOrder === "asc" ? expected : captionedOnly ? ["", "standalone", "caption"] : ["", "standalone", "", "   ", "", "caption", ""]);
+        }
+      });
+    }
+  }
+});
 
 describe("filterCopyMessagesPendingTransfer", () => {
   it("excludes album members that already reached a terminal transfer status", () => {

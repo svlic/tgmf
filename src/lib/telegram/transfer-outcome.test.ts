@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyCopyDelivery,
-  missingTargetMessageErrorReason,
   partitionForwardDeliveries,
 } from "@/lib/telegram/transfer-outcome";
 
@@ -42,7 +41,7 @@ describe("classifyCopyDelivery", () => {
   it("classifies a missing target id as a warning", () => {
     expect(classifyCopyDelivery(null)).toEqual({
       outcome: "warn",
-      errorReason: missingTargetMessageErrorReason(),
+      errorReason: "Telegram did not return a target message id",
     });
   });
 });

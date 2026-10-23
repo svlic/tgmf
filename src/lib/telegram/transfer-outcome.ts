@@ -3,16 +3,16 @@ export type ForwardDeliveryRow = {
   targetMessageId: number | null;
 };
 
-export type ForwardDeliveryPartition = {
-  delivered: ForwardDeliveryRow[];
-  undelivered: ForwardDeliveryRow[];
+export type ForwardDeliveryPartition<T = ForwardDeliveryRow> = {
+  delivered: T[];
+  undelivered: T[];
 };
 
-const MISSING_TARGET_MESSAGE_ERROR = "Telegram did not return a target message id";
+export const MISSING_TARGET_MESSAGE_ERROR = "Telegram did not return a target message id";
 
-export function partitionForwardDeliveries(rows: readonly ForwardDeliveryRow[]): ForwardDeliveryPartition {
-  const delivered: ForwardDeliveryRow[] = [];
-  const undelivered: ForwardDeliveryRow[] = [];
+export function partitionForwardDeliveries<T extends { targetMessageId: number | null }>(rows: readonly T[]): ForwardDeliveryPartition<T> {
+  const delivered: T[] = [];
+  const undelivered: T[] = [];
 
   for (const row of rows) {
     if (row.targetMessageId !== null) {
@@ -35,8 +35,4 @@ export function classifyCopyDelivery(targetMessageId: number | null): CopyDelive
   }
 
   return { outcome: "warn", errorReason: MISSING_TARGET_MESSAGE_ERROR };
-}
-
-export function missingTargetMessageErrorReason() {
-  return MISSING_TARGET_MESSAGE_ERROR;
 }

@@ -23,7 +23,7 @@ import { partitionCaptionedAlbumMessages } from "@/lib/telegram/album-policy";
 import { collectSearchMessageIds } from "@/lib/telegram/search-message-ids";
 import {
   classifyCopyDelivery,
-  missingTargetMessageErrorReason,
+  MISSING_TARGET_MESSAGE_ERROR,
   partitionForwardDeliveries,
 } from "@/lib/telegram/transfer-outcome";
 import { getTelegramFloodWaitSeconds } from "@/lib/telegram/flood-wait";
@@ -859,28 +859,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         let skippedByAlbumPolicy = 0;
         if (job.album_strategy === "captioned_only" && groupedIdKey) {
           const partition = partitionCaptionedAlbumMessages(messagesToForward);
-          if (!partition.selected) {
-            partition.skipped.forEach((message) => {
-              if (!message.id) {
-                return;
-              }
-              skippedByAlbumPolicy += 1;
-              transferRecordRepository.upsert({
-                jobId: job.id,
-                sourceMessageId: message.id,
-                mediaGroupId: groupedIdKey,
-                status: "skipped",
-                errorReason: "Skipped by captioned_only policy",
-              });
-            });
-            jobRepository.recordProgress(job.id, {
-              nextMessageId,
-              skippedIncrement: skippedByAlbumPolicy,
-              localSkipsIncrement: skippedByAlbumPolicy,
-            });
-            continue;
-          }
-          if (partition.selected.id !== sourceMessage.id) {
+          if (partition.selected && partition.selected.id !== sourceMessage.id) {
             continue;
           }
 
@@ -897,6 +876,14 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
               errorReason: "Skipped by captioned_only policy",
             });
           });
+          if (!partition.selected) {
+            jobRepository.recordProgress(job.id, {
+              nextMessageId,
+              skippedIncrement: skippedByAlbumPolicy,
+              localSkipsIncrement: skippedByAlbumPolicy,
+            });
+            continue;
+          }
           messagesToForward = [partition.selected];
         }
 
@@ -944,29 +931,23 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
         if (job.mode === "forward") {
           const forwardResult = await forwardMessages(client, job, messagesToForward, telegramAttempt);
-          const deliveryRows = forwardResult.sent.map(({ sourceMessage, targetMessageId }) => ({
-            sourceMessageId: sourceMessage.id,
-            targetMessageId,
-          }));
-          const { delivered, undelivered } = partitionForwardDeliveries(deliveryRows);
-          delivered.forEach(({ sourceMessageId, targetMessageId }) => {
-            const sourceMessage = forwardResult.sent.find((row) => row.sourceMessage.id === sourceMessageId)?.sourceMessage;
+          const { delivered, undelivered } = partitionForwardDeliveries(forwardResult.sent);
+          delivered.forEach(({ sourceMessage, targetMessageId }) => {
             transferRecordRepository.upsert({
               jobId: job.id,
-              sourceMessageId,
+              sourceMessageId: sourceMessage.id,
               targetMessageId,
-              mediaGroupId: sourceMessage ? getGroupedIdKey(sourceMessage) : null,
+              mediaGroupId: getGroupedIdKey(sourceMessage),
               status: "sent",
             });
           });
-          undelivered.forEach(({ sourceMessageId }) => {
-            const sourceMessage = forwardResult.sent.find((row) => row.sourceMessage.id === sourceMessageId)?.sourceMessage;
+          undelivered.forEach(({ sourceMessage }) => {
             transferRecordRepository.upsert({
               jobId: job.id,
-              sourceMessageId,
-              mediaGroupId: sourceMessage ? getGroupedIdKey(sourceMessage) : null,
+              sourceMessageId: sourceMessage.id,
+              mediaGroupId: getGroupedIdKey(sourceMessage),
               status: "warn",
-              errorReason: missingTargetMessageErrorReason(),
+              errorReason: MISSING_TARGET_MESSAGE_ERROR,
             });
           });
           forwardResult.skipped.forEach((message) => {
@@ -992,12 +973,12 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           if (undelivered.length > 0) {
             console.warn("Telegram forward response could not be fully mapped", {
               jobId: job.id,
-              sourceCount: deliveryRows.length,
+              sourceCount: forwardResult.sent.length,
               responseCount: forwardResult.responseCount,
               mappedCount: delivered.length,
               unmappedCount: undelivered.length,
-              sourceMessageIdSample: deliveryRows.slice(0, 5).map(({ sourceMessageId }) => sourceMessageId),
-              sourceMessageIdsOmitted: Math.max(0, deliveryRows.length - 5),
+              sourceMessageIdSample: forwardResult.sent.slice(0, 5).map(({ sourceMessage }) => sourceMessage.id),
+              sourceMessageIdsOmitted: Math.max(0, forwardResult.sent.length - 5),
               mappedTargetMessageIdSample: delivered.slice(0, 5).map(({ targetMessageId }) => targetMessageId),
               mappedTargetMessageIdsOmitted: Math.max(0, delivered.length - 5),
             });
