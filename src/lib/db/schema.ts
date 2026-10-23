@@ -17,17 +17,6 @@ export const schemaStatements = [
     flood_wait_until TEXT,
     adaptive_interval_ms INTEGER NOT NULL DEFAULT 0
   );`,
-  `CREATE TABLE IF NOT EXISTS login_attempts (
-    id TEXT PRIMARY KEY,
-    account_id TEXT,
-    phone_number TEXT,
-    status TEXT NOT NULL,
-    ip_address TEXT,
-    user_agent TEXT,
-    reason TEXT,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY(account_id) REFERENCES telegram_accounts(id) ON DELETE SET NULL
-  );`,
   `CREATE TABLE IF NOT EXISTS telegram_login_sessions (
     account_id TEXT PRIMARY KEY,
     phone_number TEXT NOT NULL,

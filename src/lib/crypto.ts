@@ -1,11 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { SignJWT, jwtVerify } from "jose";
 import { getAppEncryptionKey } from "@/lib/env";
-import type { AdminSessionPayload } from "@/lib/types";
 
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
-const JWT_AUDIENCE = "tgmf-admin";
-const JWT_ISSUER = "tgmf";
 
 function getKeyMaterial() {
   return createHash("sha256").update(getAppEncryptionKey()).digest();
@@ -38,23 +34,4 @@ export function decryptString(payload: string) {
   ]);
 
   return decrypted.toString("utf8");
-}
-
-export async function signAdminSession(payload: AdminSessionPayload) {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setIssuer(JWT_ISSUER)
-    .setAudience(JWT_AUDIENCE)
-    .setExpirationTime("7d")
-    .sign(getKeyMaterial());
-}
-
-export async function verifyAdminSession(token: string) {
-  const result = await jwtVerify<AdminSessionPayload>(token, getKeyMaterial(), {
-    issuer: JWT_ISSUER,
-    audience: JWT_AUDIENCE,
-  });
-
-  return result.payload;
 }

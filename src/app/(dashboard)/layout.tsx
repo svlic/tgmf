@@ -1,7 +1,8 @@
-import { requireAdminSession } from "@/lib/auth";
+import { connection } from "next/server";
 import { DashboardLayoutShell } from "@/components/dashboard/layout";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminSession();
+  // Keep database-backed pages request-time rendered without a session cookie.
+  await connection();
   return <DashboardLayoutShell>{children}</DashboardLayoutShell>;
 }

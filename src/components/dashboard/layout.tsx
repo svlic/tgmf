@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { APP_NAME } from "@/lib/constants";
-import { LogoutButton } from "@/components/dashboard/forms";
 import { DashboardNav } from "@/components/dashboard/nav";
 
 export function DashboardLayoutShell({ children }: { children: ReactNode }) {
@@ -10,7 +9,6 @@ export function DashboardLayoutShell({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-[1400px] flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-foreground">{APP_NAME}</p>
-            <LogoutButton />
           </div>
           <DashboardNav />
         </div>
@@ -24,9 +22,6 @@ export function DashboardLayoutShell({ children }: { children: ReactNode }) {
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             <DashboardNav />
-          </div>
-          <div className="border-t border-border/60 pt-4">
-            <LogoutButton />
           </div>
         </aside>
         <main className="min-w-0 flex-1 pb-10">{children}</main>

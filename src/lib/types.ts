@@ -1,8 +1,3 @@
-export type AdminSessionPayload = {
-  authenticated: true;
-  issuedAt: number;
-};
-
 export type JobStatus =
   | "draft"
   | "pending"

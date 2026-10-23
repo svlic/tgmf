@@ -1,4 +1,4 @@
-import { requireAdminSession, assertCsrf } from "@/lib/auth";
+import { assertCsrf } from "@/lib/csrf";
 import { accountRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
 import { rethrowNextError } from "@/lib/next";
@@ -9,7 +9,6 @@ export async function GET(
   context: { params: Promise<{ accountId: string }> },
 ) {
   try {
-    await requireAdminSession();
     const { accountId } = await context.params;
     const account = accountRepository.getById(accountId);
     if (!account) {
@@ -29,7 +28,6 @@ export async function POST(
   context: { params: Promise<{ accountId: string }> },
 ) {
   try {
-    await requireAdminSession();
     await assertCsrf();
     const { accountId } = await context.params;
     const account = accountRepository.getById(accountId);

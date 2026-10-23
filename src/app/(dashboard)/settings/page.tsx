@@ -31,12 +31,6 @@ export default function SettingsPage() {
       description: "Protects secrets in the database.",
       configured: true,
     },
-    {
-      label: "Admin password",
-      value: "configured",
-      description: "Dashboard login.",
-      configured: true,
-    },
   ] as const;
 
   return (

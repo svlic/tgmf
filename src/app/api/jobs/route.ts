@@ -1,4 +1,4 @@
-import { requireAdminSession, assertCsrf } from "@/lib/auth";
+import { assertCsrf } from "@/lib/csrf";
 import { accountRepository, jobRepository, withRepositoryError } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
 import { rethrowNextError } from "@/lib/next";
@@ -6,7 +6,6 @@ import { jobSchema } from "@/lib/validation/forms";
 
 export async function POST(request: Request) {
   try {
-    await requireAdminSession();
     await assertCsrf();
     const payload = jobSchema.parse(await request.json());
     const account = accountRepository.getById(payload.accountId);

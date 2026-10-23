@@ -1,11 +1,9 @@
-import { requireAdminSession } from "@/lib/auth";
 import { buildAccountsOverviewSnapshot } from "@/lib/accounts-dashboard";
 import { fail, ok } from "@/lib/http";
 import { rethrowNextError } from "@/lib/next";
 
 export async function GET() {
   try {
-    await requireAdminSession();
     return ok(buildAccountsOverviewSnapshot());
   } catch (error) {
     rethrowNextError(error);

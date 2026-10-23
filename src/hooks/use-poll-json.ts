@@ -39,10 +39,7 @@ export function usePollJson<T>({
         const contentType = response.headers.get("content-type") || "";
 
         if (!contentType.includes("application/json")) {
-          if (response.status === 401 || response.status === 403 || response.redirected) {
-            window.location.replace("/login");
-          }
-          return;
+          throw new Error(`Unexpected response format (${response.status})`);
         }
 
         const body = (await response.json()) as JsonEnvelope<T>;

@@ -4,7 +4,7 @@
 
 ## 项目功能
 
-- 带密码保护的管理后台
+- 无需登录密码的管理后台
 - 支持管理多个 Telegram 用户账号，并保存登录会话
 - 支持手机号登录、验证码校验和两步验证密码流程
 - 支持刷新 Telegram 会话列表和频道列表
@@ -16,7 +16,8 @@
 - 本项目不会绕过 Telegram 的权限体系。
 - 私有频道只有在当前登录账号本身已有访问权限时才能访问。
 - 对于受保护内容或禁止转发的内容，系统不会绕过 Telegram 限制。
-- `ADMIN_PASSWORD`、`APP_ENCRYPTION_KEY`、Telegram API 凭据、登录会话、验证码和两步验证密码等敏感信息必须始终保留在服务端。
+- 管理后台不提供身份验证；任何能够访问服务的人都可以管理账号和任务，请仅在可信网络中开放，或在反向代理层限制访问。
+- `APP_ENCRYPTION_KEY`、Telegram API 凭据、登录会话、验证码和两步验证密码等敏感信息必须始终保留在服务端。
 
 ## Docker 部署
 
@@ -40,14 +41,12 @@ DATABASE_URL=data/app.db
 TELEGRAM_API_ID=
 TELEGRAM_API_HASH=
 APP_ENCRYPTION_KEY=
-ADMIN_PASSWORD=
 ```
 
 说明：
 
 - `TELEGRAM_API_ID` 和 `TELEGRAM_API_HASH`：你的 Telegram API 配置
-- `APP_ENCRYPTION_KEY`：服务端加密/签名密钥，用于加密数据库中的敏感信息并签发管理会话；它不是登录密码，建议使用强随机且长度至少 32 个字符的密钥
-- `ADMIN_PASSWORD`：后台登录密码，按普通管理员登录密码使用即可；生产环境建议使用 bcrypt 哈希
+- `APP_ENCRYPTION_KEY`：服务端加密密钥，用于加密数据库中的敏感信息，建议使用强随机且长度至少 32 个字符的密钥；升级时请保留原值，以便解密已有 Telegram 会话
 - `DATABASE_URL`：SQLite 文件路径，默认会落在挂载出来的 `data/` 目录里
 
 ### 2. 准备数据目录
@@ -78,11 +77,11 @@ docker compose up --build
 docker compose logs -f web worker
 ```
 
-如果启动成功，就可以通过你实际对外暴露的后台地址访问，例如 `http://服务器IP:3000` 或反向代理后的域名地址，并使用 `.env` 中配置的 `ADMIN_PASSWORD` 登录。
+如果启动成功，就可以通过后台地址直接访问，例如 `http://服务器IP:3000` 或反向代理后的域名地址，无需输入后台密码。
 
 ## 基本使用流程
 
-1. 登录管理后台。
+1. 打开管理后台。
 2. 创建一个 Telegram 账号记录。
 3. 使用手机号发起 Telegram 登录。
 4. 完成验证码校验，如有需要再完成两步验证。

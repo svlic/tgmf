@@ -2,7 +2,6 @@ import { getDb } from "@/lib/db/client";
 import {
   DEFAULT_DELAY_SECONDS,
   LOGIN_WINDOW_MINUTES,
-  MAX_LOGIN_ATTEMPTS,
   WORKER_HEARTBEAT_STALE_MS,
 } from "@/lib/constants";
 import { encryptString, decryptString } from "@/lib/crypto";
@@ -164,45 +163,6 @@ export const telegramLoginSessionRepository = {
   },
   delete(accountId: string) {
     getDb().prepare(`DELETE FROM telegram_login_sessions WHERE account_id = ?`).run(accountId);
-  },
-};
-
-export const loginAttemptRepository = {
-  record(input: {
-    accountId?: string | null;
-    phoneNumber?: string | null;
-    status: "success" | "failure";
-    ipAddress?: string | null;
-    userAgent?: string | null;
-    reason?: string | null;
-  }) {
-    getDb().prepare(
-      `INSERT INTO login_attempts (id, account_id, phone_number, status, ip_address, user_agent, reason, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      generateId("login"),
-      input.accountId ?? null,
-      input.phoneNumber ?? null,
-      input.status,
-      input.ipAddress ?? null,
-      input.userAgent ?? null,
-      input.reason ?? null,
-      nowIso(),
-    );
-  },
-  countRecentFailures(ipAddress: string) {
-    const row = getDb()
-      .prepare(
-        `SELECT COUNT(*) as count FROM login_attempts
-         WHERE ip_address = ? AND status = 'failure' AND created_at >= datetime('now', ?)`,
-      )
-      .get(ipAddress, `-${LOGIN_WINDOW_MINUTES} minutes`) as { count: number };
-    return row.count;
-  },
-  assertNotRateLimited(ipAddress: string) {
-    if (this.countRecentFailures(ipAddress) >= MAX_LOGIN_ATTEMPTS) {
-      throw new Error("Too many login attempts. Please try again later.");
-    }
   },
 };
 

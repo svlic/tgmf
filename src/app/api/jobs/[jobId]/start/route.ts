@@ -1,4 +1,4 @@
-import { assertCsrf, requireAdminSession } from "@/lib/auth";
+import { assertCsrf } from "@/lib/csrf";
 import { jobRepository, withRepositoryError } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
 import { rethrowNextError } from "@/lib/next";
@@ -8,7 +8,6 @@ export async function POST(
   context: { params: Promise<{ jobId: string }> },
 ) {
   try {
-    await requireAdminSession();
     await assertCsrf();
     const { jobId } = await context.params;
     const job = jobRepository.getById(jobId);

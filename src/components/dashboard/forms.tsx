@@ -50,24 +50,10 @@ async function submitJson<TData = unknown>(url: string, body: unknown, method = 
 
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
-    if (response.redirected) {
-      window.location.replace(response.url);
-      return { ok: false, error: "Redirecting to login" };
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      window.location.replace("/login");
-      return { ok: false, error: "Redirecting to login" };
-    }
-
     throw new Error(`Unexpected response format (${response.status})`);
   }
 
   const result: JsonResult<TData> = await response.json();
-
-  if ((response.status === 401 || response.status === 403) && !result.ok) {
-    window.location.replace("/login");
-  }
 
   return result;
 }
@@ -94,65 +80,6 @@ function ActionFeedback({ feedback }: { feedback: { message: string; tone: Feedb
     <FieldMessage tone={feedback.tone} className="basis-full">
       {feedback.message}
     </FieldMessage>
-  );
-}
-
-export function LoginForm() {
-  const [state, setState] = useState<FormState>({ error: null, success: null });
-  const [loading, setLoading] = useState(false);
-
-  return (
-    <form
-      className="space-y-5"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        setLoading(true);
-        setState({ error: null, success: null });
-        const formData = new FormData(event.currentTarget);
-
-        try {
-          const result = await submitJson("/api/auth/login", {
-            password: String(formData.get("password") || ""),
-          });
-          if (!result.ok) {
-            setState({ error: result.error, success: null });
-            return;
-          }
-          window.location.replace("/");
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Login failed";
-          setState({ error: message, success: null });
-        } finally {
-          setLoading(false);
-        }
-      }}
-    >
-      <Field>
-        <FieldLabel htmlFor="password">Login password</FieldLabel>
-        <Input id="password" type="password" name="password" placeholder="Enter your login password" required />
-        <FieldDescription>This password is checked against ADMIN_PASSWORD in the server environment.</FieldDescription>
-      </Field>
-      <FormFeedback state={state} />
-      <Button type="submit" disabled={loading} size="lg" className="w-full">
-        {loading ? "Signing in..." : "Sign in"}
-      </Button>
-    </form>
-  );
-}
-
-export function LogoutButton() {
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="w-full justify-start text-muted-foreground hover:text-foreground"
-      onClick={async () => {
-        await submitJson("/api/auth/logout", {});
-        window.location.replace("/login");
-      }}
-    >
-      Logout
-    </Button>
   );
 }
 

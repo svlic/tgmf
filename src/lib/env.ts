@@ -10,13 +10,10 @@ const appEncryptionKeySchema = z
   .string()
   .min(32, "APP_ENCRYPTION_KEY must be at least 32 characters and should be a server-side random secret, not a login password.");
 
-const adminPasswordSchema = z.string().min(1);
-
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
 
 let cachedBaseEnv: BaseEnv | null = null;
 let cachedAppEncryptionKey: string | null = null;
-let cachedAdminPassword: string | null = null;
 
 export function getBaseEnv(): BaseEnv {
   if (!cachedBaseEnv) {
@@ -36,12 +33,4 @@ export function getAppEncryptionKey(): string {
   }
 
   return cachedAppEncryptionKey;
-}
-
-export function getAdminPassword(): string {
-  if (!cachedAdminPassword) {
-    cachedAdminPassword = adminPasswordSchema.parse(process.env.ADMIN_PASSWORD);
-  }
-
-  return cachedAdminPassword;
 }

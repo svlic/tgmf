@@ -1,7 +1,5 @@
-export const AUTH_COOKIE_NAME = "tgmf_admin_session";
 export const CSRF_HEADER_NAME = "x-tgmf-csrf";
 export const LOGIN_WINDOW_MINUTES = 15;
-export const MAX_LOGIN_ATTEMPTS = 10;
 export const WORKER_HEARTBEAT_STALE_MS = 60_000;
 export const WORKER_POLL_INTERVAL_MS = 5_000;
 export const DEFAULT_DELAY_SECONDS = 2;
