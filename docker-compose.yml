@@ -1,6 +1,6 @@
 services:
   web:
-    build: .
+    image: ghcr.io/svlic/tgmf:${IMAGE_TAG:-latest}
     command: npm run start
     env_file:
       - .env
@@ -10,7 +10,7 @@ services:
       - ./data:/app/data
 
   worker:
-    build: .
+    image: ghcr.io/svlic/tgmf:${IMAGE_TAG:-latest}
     command: npm run worker
     env_file:
       - .env

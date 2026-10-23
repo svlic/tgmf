@@ -21,20 +21,40 @@
 
 ## Docker 部署
 
-当前仓库通过 `/opt/ocode/tgmf/docker-compose.yml` 启动两个服务：
+GitHub Actions 在推送到 `main` 后构建镜像并发布到 GHCR，服务器只拉取镜像，不运行 `npm ci` 或 `npm run build`。镜像同时支持 `linux/amd64` 和 `linux/arm64`，Docker 会自动选择对应架构。Web 和 Worker 共用同一个镜像：
 
-- `web`：管理后台，默认监听 `3000` 端口
+- `web`：管理后台，容器监听 `3000`，默认映射到服务器的 `54001` 端口
 - `worker`：后台任务执行进程，负责轮询并处理同步任务
 
-### 1. 准备环境变量
+### 1. 首次发布镜像（仓库维护者）
 
-先复制环境变量模板：
+1. 将 `.github/workflows/docker-publish.yml` 提交并推送到 `main`。GitHub 会自动识别工作流，在仓库 **Actions** 页面检查构建结果。也可在该页面选择 `main` 手动运行；其他分支不会发布镜像。
+2. 工作流使用 GitHub 托管 runner 和内置 `GITHUB_TOKEN`，不需要配置个人发布 Token、服务器 SSH 密钥或 Telegram 凭据。如果仓库或组织限制了 Actions，需要在 **Settings → Actions → General** 中允许该工作流使用的 Actions。
+3. 首次发布成功后，在 GitHub 个人主页 **Packages → tgmf → Package settings** 中检查可见性。新包默认私有；如果希望服务器免登录拉取，可改为 Public。公开镜像中的程序文件可被任何人下载。
+
+每次成功构建会发布 `ghcr.io/svlic/tgmf:latest` 和以完整 Git 提交 ID 为标签的版本。两个标签均支持上述两种架构。构建使用缓存；ARM64 在 AMD64 runner 上通过 QEMU 构建，首次构建可能较慢。Actions 用量与镜像存储配额以 GitHub 套餐为准。
+
+**发布镜像不会自动更新服务器。**服务器更新需要执行下文的拉取和启动命令。
+
+### 2. 准备服务器文件与环境变量
+
+服务器只需安装 Docker Engine 和 Compose 插件，不需要安装 Node.js、npm 或完整克隆源码。在任意部署目录（例如 `/opt/tgmf`）放置仓库中的 `docker-compose.yml` 和 `.env.example`：
+
+```text
+/opt/tgmf/
+├── docker-compose.yml
+├── .env
+└── data/
+```
+
+首次部署时，从模板创建配置：
 
 ```bash
 cp .env.example .env
+mkdir -p data
 ```
 
-然后编辑 `/opt/ocode/tgmf/.env`，至少填写这些配置：
+然后编辑部署目录中的 `.env`，至少填写这些配置。已有部署请保留原 `.env` 和 `data/`，不要用模板覆盖：
 
 ```env
 DATABASE_URL=data/app.db
@@ -49,13 +69,7 @@ TELEGRAM_API_HASH=
 - **已有部署如果设置过 `APP_ENCRYPTION_KEY`，升级时必须保留原值**，不会自动迁移到密钥文件。删除或更换原值无法解密旧数据，自动生成的新密钥也无法恢复旧会话
 - `DATABASE_URL`：SQLite 文件路径，默认会落在挂载出来的 `data/` 目录里
 
-### 2. 准备数据目录
-
-创建本地数据目录，用于持久化 SQLite 数据库：
-
-```bash
-mkdir -p data
-```
+`.env` 通过 Compose 的 `env_file` 在运行时注入 Web 和 Worker，不应提交到 GitHub、打包进镜像或作为构建凭据上传到 Actions。修改运行配置不需要重建镜像，执行 `docker compose up -d --no-build` 应用即可。模板复制完成后可删除 `.env.example`。
 
 `docker-compose.yml` 会把宿主机的 `./data` 挂载到容器内的 `/app/data`，因此 Web 和 Worker 会共享同一份数据库文件。
 
@@ -63,23 +77,51 @@ mkdir -p data
 
 ### 3. 启动服务
 
-执行：
+先确认首次镜像构建已成功。如果镜像保持私有，在服务器执行以下命令，并在密码提示中输入具有 `read:packages` 权限且能访问该包的 Personal Access Token（classic）。公开镜像无需此步骤：
 
 ```bash
-docker compose up --build
+docker login ghcr.io -u svlic
 ```
 
-首次启动会构建镜像，然后同时启动 Web 和 Worker。
+不要把 Token 写进 Compose、提交到仓库或直接写入命令历史。
+
+在部署目录执行：
+
+```bash
+docker compose pull
+docker compose up -d --no-build
+```
+
+首次启动会下载预构建镜像，然后启动 Web 和 Worker，服务器不进行镜像编译。
 
 ### 4. 检查运行状态
 
 建议查看日志确认两个服务都已正常运行：
 
 ```bash
+docker compose ps
 docker compose logs -f web worker
 ```
 
-如果启动成功，就可以通过后台地址直接访问，例如 `http://服务器IP:3000` 或反向代理后的域名地址，无需输入后台密码。
+如果启动成功，就可以通过 `http://服务器IP:54001` 或反向代理后的域名访问，无需输入后台密码。请仅在可信网络开放，或通过防火墙、反向代理限制访问。
+
+### 5. 升级、指定版本与迁移现有部署
+
+每次推送到 `main` 后，先等待 Actions 构建成功，再在服务器的部署目录执行：
+
+```bash
+docker compose pull
+docker compose up -d --no-build
+docker compose logs --tail=100 web worker
+```
+
+不再使用 `docker compose up -d --build`。镜像拉取不会替换运行中的容器，`up` 才会应用更新，更新时服务可能短暂中断。
+
+默认使用 `latest`。如需固定版本，在服务器 `.env` 中增加 `IMAGE_TAG=完整Git提交ID`，再执行相同更新命令。此后部署保持该版本；恢复跟随最新镜像时，将其改为 `IMAGE_TAG=latest`。Web 和 Worker 始终使用同一标签。
+
+从源码构建方式迁移时，先等待首次镜像发布成功，再在**原部署目录**替换 `docker-compose.yml` 并执行更新命令，保留原 `.env`、`data/` 和 Compose 项目名。如果必须移动部署目录，应先停止旧 Web 和 Worker，再完整迁移数据及配置，避免新旧 Worker 同时运行。
+
+升级前请备份数据库和对应密钥；需要一致的文件备份时先停止 Web 和 Worker。指定旧镜像可以回退程序，但不保证旧版本兼容升级后的数据库，必要时需恢复配套的数据备份。
 
 ## 基本使用流程
 
