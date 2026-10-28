@@ -97,7 +97,7 @@ function matchesAnyRegex(text: string, patterns: RegExp[]) {
   });
 }
 
-function isMessageAllowedByTextFilter(message: TextFilterableMessage, filter: MessageTextFilter) {
+export function isMessageAllowedByTextFilter(message: TextFilterableMessage, filter: MessageTextFilter) {
   const text = getMessageText(message);
   if (matchesAnyKeyword(text, filter.keywordBlacklist) || matchesAnyRegex(text, filter.regexBlacklist)) {
     return false;

@@ -17,6 +17,7 @@ import type { AllowedMediaType, DialogCacheRow, SyncJobRow } from "@/lib/types";
 import { nowIso, safeErrorMessage, sleep } from "@/lib/utils";
 import {
   filterMessagesByTextFilter,
+  isMessageAllowedByTextFilter,
   parseMessageTextFilterFromJob,
 } from "@/lib/telegram/message-text-filter";
 import { partitionCaptionedAlbumMessages } from "@/lib/telegram/album-policy";
@@ -888,7 +889,13 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
         }
 
         const mediaFilteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
-        const textFilteredMessages = filterMessagesByTextFilter(mediaFilteredMessages.allowed, textFilter);
+        const textFilteredMessages = job.album_strategy === "full_group" && groupedIdKey
+          ? isMessageAllowedByTextFilter({
+              message: messagesToForward.map((message) => message.message?.trim() ?? "").filter(Boolean).join("\n"),
+            }, textFilter)
+            ? { allowed: mediaFilteredMessages.allowed, skipped: [] }
+            : { allowed: [], skipped: mediaFilteredMessages.allowed }
+          : filterMessagesByTextFilter(mediaFilteredMessages.allowed, textFilter);
         const filterSkippedMessages = [
           ...mediaFilteredMessages.skipped.map((message) => ({ message, reason: "Skipped by media type filter" })),
           ...textFilteredMessages.skipped.map((message) => ({ message, reason: "Skipped by text filter" })),

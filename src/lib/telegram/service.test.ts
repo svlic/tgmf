@@ -25,6 +25,63 @@ describe("processJob album policy", () => {
     vi.unstubAllEnvs();
   });
 
+  for (const mode of ["forward", "copy"] as const) {
+    it.each([
+      { name: "keyword blacklist", captions: ["", "spam", ""], keywordBlacklist: ["spam"], allowed: false },
+      { name: "regex blacklist", captions: ["", "spam", ""], regexBlacklist: ["^spam$"], allowed: false },
+      { name: "keyword whitelist", captions: ["", "keep", ""], keywordWhitelist: ["keep"], allowed: true },
+      { name: "regex whitelist", captions: ["", "keep", ""], regexWhitelist: ["^keep$"], allowed: true },
+      { name: "blacklist precedence across captions", captions: ["keep", "spam", ""], keywordWhitelist: ["keep"], keywordBlacklist: ["spam"], allowed: false },
+      { name: "captionless blacklist", captions: ["", "", ""], keywordBlacklist: ["spam"], allowed: true },
+      { name: "captionless whitelist", captions: ["", "", ""], keywordWhitelist: ["keep"], allowed: false },
+    ])(`${mode}/full_group filters the whole album: $name`, async (scenario) => {
+      const messages = [...scenario.captions.map((message, index) => ({ id: 10 + index, groupedId: "a", message })),
+        { id: 13, message: "keep" }, { id: 14, message: "spam" },
+      ].map((message) => Object.assign(Object.create(Api.Message.prototype), message) as Api.Message);
+      const deliveries: number[][] = [];
+      const copiedTexts: string[] = [];
+      const client = {
+        connect: async () => undefined,
+        disconnect: async () => undefined,
+        getMessages: async (_peer: string, options: { ids?: number[] }) =>
+          messages.filter((message) => !options.ids || options.ids.includes(message.id)),
+        forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+          deliveries.push(options.messages);
+          return options.messages.map((id) => ({ id: id + 100 }));
+        },
+        sendMessage: async (_peer: string, options: { message: string }) => {
+          copiedTexts.push(options.message);
+          return { id: 200 + copiedTexts.length };
+        },
+      };
+      vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+      const account = accountRepository.create({ label: "group-filter", phoneNumber: "+10000000002" })!;
+      const created = jobRepository.create({
+        accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+        startMessageId: 10, endMessageId: 14, mode, jobOrder: "desc", albumStrategy: "full_group", delaySeconds: 0,
+        keywordWhitelist: scenario.keywordWhitelist, keywordBlacklist: scenario.keywordBlacklist,
+        regexWhitelist: scenario.regexWhitelist, regexBlacklist: scenario.regexBlacklist,
+      })!;
+      const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+      await processJob(job, "test-worker", () => undefined);
+      const sentIds = scenario.allowed ? [10, 11, 12, 13] : [13];
+      expect(jobRepository.getById(job.id)).toMatchObject({
+        status: "completed", succeeded_messages: sentIds.length, skipped_messages: 5 - sentIds.length, failed_messages: 0,
+      });
+      for (const message of messages) {
+        expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, message.id)).toMatchObject({
+          status: sentIds.includes(message.id) ? "sent" : "skipped",
+          error_reason: sentIds.includes(message.id) ? null : "Skipped by text filter",
+        });
+      }
+      if (mode === "forward") {
+        expect(deliveries).toEqual(scenario.allowed ? [[13], [10, 11, 12]] : [[13]]);
+      } else {
+        expect(copiedTexts).toEqual(scenario.allowed ? ["keep", ...scenario.captions] : ["keep"]);
+      }
+    });
+  }
+
   it("preserves source mapping, warnings and diagnostics for a partially mapped album", async () => {
     const messages = [21, 22, 23].map((id) =>
       Object.assign(Object.create(Api.Message.prototype), { id, groupedId: "album", message: "caption" }) as Api.Message,
