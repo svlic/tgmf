@@ -25,6 +25,53 @@ describe("processJob album policy", () => {
     vi.unstubAllEnvs();
   });
 
+  it.each([
+    { name: "mixed media rejected as a whole", allowedMediaTypes: ["photo"] as const, start: 10, end: 12, sent: false },
+    { name: "mixed media accepted as a whole", allowedMediaTypes: ["photo", "other"] as const, start: 10, end: 12, sent: true },
+    { name: "lower ID boundary", allowedMediaTypes: [] as const, start: 11, end: 12, sent: false },
+    { name: "upper ID boundary", allowedMediaTypes: [] as const, start: 10, end: 11, sent: false },
+  ])("forward/full_group is indivisible: $name", async (scenario) => {
+    const messages = [
+      { id: 10, groupedId: "a", message: "caption", media: new Api.MessageMediaPhoto({}) },
+      { id: 11, groupedId: "a", message: "", media: new Api.MessageMediaUnsupported() },
+      { id: 12, groupedId: "a", message: "", media: new Api.MessageMediaPhoto({}) },
+    ].map((message) => Object.assign(Object.create(Api.Message.prototype), message) as Api.Message);
+    const deliveries: number[][] = [];
+    const client = {
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      getMessages: async (_peer: string, options: { ids?: number[] }) =>
+        messages.filter((message) => !options.ids || options.ids.includes(message.id)),
+      forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+        deliveries.push(options.messages);
+        return options.messages.map((id) => ({ id: id + 100 }));
+      },
+    };
+    vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+    const account = accountRepository.create({ label: "atomic-group", phoneNumber: "+10000000003" })!;
+    const created = jobRepository.create({
+      accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+      startMessageId: scenario.start, endMessageId: scenario.end, mode: "forward", jobOrder: "asc",
+      albumStrategy: "full_group", delaySeconds: 0, allowedMediaTypes: [...scenario.allowedMediaTypes],
+    })!;
+    const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+    await processJob(job, "test-worker", () => undefined);
+    expect(deliveries).toEqual(scenario.sent ? [[10, 11, 12]] : []);
+    const count = scenario.end - scenario.start + 1;
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      status: "completed", total_messages: count, processed_messages: count, failed_messages: 0,
+      succeeded_messages: scenario.sent ? count : 0, skipped_messages: scenario.sent ? 0 : count,
+    });
+    for (const message of messages) {
+      const record = transferRecordRepository.getByJobAndSourceMessageId(job.id, message.id);
+      if (message.id < scenario.start || message.id > scenario.end) {
+        expect(record).toBeNull();
+      } else {
+        expect(record).toMatchObject({ status: scenario.sent ? "sent" : "skipped" });
+      }
+    }
+  });
+
   for (const mode of ["forward", "copy"] as const) {
     it.each([
       { name: "keyword blacklist", captions: ["", "spam", ""], keywordBlacklist: ["spam"], allowed: false },

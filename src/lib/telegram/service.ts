@@ -509,7 +509,9 @@ async function createCopyTempDirectory(jobId: string, messageId: number) {
 }
 
 function isMessageInJobRange(message: MessageLike, job: SyncJobRow) {
-  return typeof message.id === "number" && message.id >= job.start_message_id && message.id <= job.end_message_id;
+  return typeof message.id === "number"
+    && (job.start_message_id <= 0 || message.id >= job.start_message_id)
+    && (job.end_message_id <= 0 || message.id <= job.end_message_id);
 }
 
 function isForwardableMessage(message: MessageLike): message is MessageLike & { id: number } {
@@ -536,7 +538,8 @@ async function fetchAlbumMessages(
     }),
   );
   const messages = Array.from(nearby as Iterable<MessageLike>).filter(
-    (message) => getGroupedIdKey(message) === groupedId && isMessageInJobRange(message, job),
+    (message) => getGroupedIdKey(message) === groupedId
+      && (job.album_strategy === "full_group" || isMessageInJobRange(message, job)),
   );
 
   return messages.length > 0 ? sortMessagesById(messages) : [sourceMessage];
@@ -888,8 +891,19 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           messagesToForward = [partition.selected];
         }
 
-        const mediaFilteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
-        const textFilteredMessages = job.album_strategy === "full_group" && groupedIdKey
+        const fullGroup = job.album_strategy === "full_group" && groupedIdKey !== null;
+        const skippedByRange = fullGroup && messagesToForward.some((message) => !isMessageInJobRange(message, job))
+          ? messagesToForward.filter((message) => isMessageInJobRange(message, job))
+          : [];
+        if (skippedByRange.length > 0) {
+          messagesToForward = [];
+        }
+
+        let mediaFilteredMessages = filterMessagesByAllowedMediaTypes(messagesToForward, mediaFilter);
+        if (fullGroup && mediaFilteredMessages.skipped.length > 0) {
+          mediaFilteredMessages = { allowed: [], skipped: messagesToForward };
+        }
+        const textFilteredMessages = fullGroup
           ? isMessageAllowedByTextFilter({
               message: messagesToForward.map((message) => message.message?.trim() ?? "").filter(Boolean).join("\n"),
             }, textFilter)
@@ -897,6 +911,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             : { allowed: [], skipped: mediaFilteredMessages.allowed }
           : filterMessagesByTextFilter(mediaFilteredMessages.allowed, textFilter);
         const filterSkippedMessages = [
+          ...skippedByRange.map((message) => ({ message, reason: "Skipped because full album extends outside job ID range" })),
           ...mediaFilteredMessages.skipped.map((message) => ({ message, reason: "Skipped by media type filter" })),
           ...textFilteredMessages.skipped.map((message) => ({ message, reason: "Skipped by text filter" })),
         ];
