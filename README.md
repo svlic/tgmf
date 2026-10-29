@@ -153,3 +153,9 @@ npm run lint
 npm run typecheck
 npm test
 ```
+
+## 架构与维护记录
+
+- [架构决策记录（ADR）](docs/adr/README.md)：根据 Git 历史重建，区分代码事实、分析、待确认事项和维护者补充背景。
+- [技术债务与待决事项](docs/technical-debt.md)：按当前单机使用目标整理的风险、建议及验收条件，不代表已发生事故或已完成修复。
+- [恢复正确性分阶段计划](docs/recovery-plan.md)：先修结果、计数和停止协议，再开放失败任务继续；目前仅计划，未实施代码改动。
