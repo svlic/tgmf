@@ -1,6 +1,6 @@
 import { workerRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
-import { rethrowNextError } from "@/lib/next";
+import { unstable_rethrow as rethrowNextError } from "next/navigation";
 import { WORKER_HEARTBEAT_STALE_MS } from "@/lib/constants";
 
 export async function GET() {

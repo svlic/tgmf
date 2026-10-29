@@ -1,5 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { access, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { Api } from "telegram/tl";
+import type { CustomFile } from "telegram/client/uploads";
 import { getDb } from "@/lib/db/client";
 import { accountRepository, jobRepository, transferRecordRepository } from "@/lib/db/repositories";
 import {
@@ -23,6 +26,113 @@ describe("processJob album policy", () => {
   afterAll(() => {
     getDb().close();
     vi.unstubAllEnvs();
+  });
+
+  it.each([
+    { allowedMediaTypes: [] as const, sentIds: [10, 11, 12] },
+    { allowedMediaTypes: ["photo"] as const, sentIds: [10] },
+    { allowedMediaTypes: ["text"] as const, sentIds: [11] },
+  ])("filters standalone messages with $allowedMediaTypes without applying album policy", async ({ allowedMediaTypes, sentIds }) => {
+    const messages = [
+      { id: 10, message: "", media: new Api.MessageMediaPhoto({}) },
+      { id: 11, message: "standalone text" },
+      { id: 12, message: "" },
+    ].map((message) => Object.assign(Object.create(Api.Message.prototype), message) as Api.Message);
+    const deliveries: number[][] = [];
+    const client = {
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      getMessages: async () => messages,
+      forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+        deliveries.push(options.messages);
+        return options.messages.map((id) => ({ id: id + 100 }));
+      },
+    };
+    vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+    const account = accountRepository.create({ label: "standalone-filter", phoneNumber: "+10000000004" })!;
+    const created = jobRepository.create({
+      accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+      startMessageId: 10, endMessageId: 12, mode: "forward", jobOrder: "asc",
+      albumStrategy: "captioned_only", delaySeconds: 0, allowedMediaTypes: [...allowedMediaTypes],
+    })!;
+    const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+    await processJob(job, "test-worker", () => undefined);
+    expect(deliveries).toEqual(sentIds.map((id) => [id]));
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      status: "completed", processed_messages: 3, failed_messages: 0,
+      succeeded_messages: sentIds.length, skipped_messages: 3 - sentIds.length,
+    });
+    for (const message of messages) {
+      expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, message.id)).toMatchObject({
+        status: sentIds.includes(message.id) ? "sent" : "skipped",
+        error_reason: sentIds.includes(message.id) ? null : "Skipped by media type filter",
+      });
+    }
+  });
+
+  it.each([
+    { name: "photo", photo: true, streaming: false, failUpload: false },
+    { name: "streamable video", photo: false, streaming: true, failUpload: false },
+    { name: "non-streamable video", photo: false, streaming: false, failUpload: false },
+    { name: "failed video upload", photo: false, streaming: true, failUpload: true },
+  ])("preserves copy upload metadata and temporary cleanup for $name", async (scenario) => {
+    const attributes = [
+      new Api.DocumentAttributeFilename({ fileName: "clip.mp4" }),
+      new Api.DocumentAttributeVideo({ duration: 1, w: 64, h: 48, supportsStreaming: scenario.streaming }),
+    ];
+    const document = Object.assign(Object.create(Api.Document.prototype), { mimeType: "video/mp4", attributes }) as Api.Document;
+    const entities = [new Api.MessageEntityBold({ offset: 0, length: 7 })];
+    const message = Object.assign(Object.create(Api.Message.prototype), {
+      id: 10, message: "caption", entities,
+      media: scenario.photo ? new Api.MessageMediaPhoto({}) : new Api.MessageMediaDocument({ document }),
+    }) as Api.Message;
+    let temporaryPath = "";
+    let upload: unknown;
+    const client = {
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      getMessages: async () => [message],
+      downloadMedia: async (_message: Api.Message, options: { outputFile: string }) => {
+        temporaryPath = options.outputFile;
+        await writeFile(temporaryPath, "fixture-media");
+        return temporaryPath;
+      },
+      sendFile: async (peer: string, options: {
+        file: CustomFile; caption: string; formattingEntities: Api.TypeMessageEntity[];
+        attributes?: Api.TypeDocumentAttribute[]; supportsStreaming: boolean; workers: number;
+      }) => {
+        upload = {
+          peer, name: options.file.name, size: options.file.size, content: await readFile(options.file.path, "utf8"),
+          caption: options.caption, entities: options.formattingEntities, attributes: options.attributes,
+          supportsStreaming: options.supportsStreaming, workers: options.workers,
+        };
+        if (scenario.failUpload) throw new Error("upload failed");
+        return { id: 913 };
+      },
+    };
+    vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+    const account = accountRepository.create({ label: "copy-metadata", phoneNumber: "+10000000005" })!;
+    const created = jobRepository.create({
+      accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+      startMessageId: 10, endMessageId: 10, mode: "copy", jobOrder: "asc", albumStrategy: "full_group", delaySeconds: 0,
+    })!;
+    const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+    await processJob(job, "test-worker", () => undefined);
+    expect(upload).toEqual({
+      peer: "target", name: scenario.photo ? "telegram-photo-10.jpg" : "clip.mp4", size: 13, content: "fixture-media",
+      caption: "caption", entities, attributes: scenario.photo ? undefined : attributes,
+      supportsStreaming: scenario.streaming, workers: 1,
+    });
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      status: scenario.failUpload ? "failed" : "completed", processed_messages: 1,
+      succeeded_messages: scenario.failUpload ? 0 : 1, failed_messages: scenario.failUpload ? 1 : 0, skipped_messages: 0,
+    });
+    expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, 10)).toMatchObject({
+      status: scenario.failUpload ? "failed" : "sent", target_message_id: scenario.failUpload ? null : 913,
+      error_reason: scenario.failUpload ? "upload failed" : null,
+    });
+    expect(temporaryPath).not.toBe("");
+    await expect(access(dirname(temporaryPath))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each([
@@ -267,6 +377,17 @@ describe("filterCopyMessagesPendingTransfer", () => {
 });
 
 describe("mapForwardResponse", () => {
+  it.each([
+    { response: [], responseCount: 0, targetIds: [null, null, null] },
+    { response: [[{ id: 901 }, {}], [], { id: 703 }], responseCount: 3, targetIds: [901, null, 703] },
+  ])("preserves missing IDs and order for $response", ({ response, responseCount, targetIds }) => {
+    const sourceMessages = [{ id: 21 }, { id: 22 }, { id: 23 }];
+    expect(mapForwardResponse(sourceMessages, response)).toEqual({
+      responseCount,
+      sent: targetIds.map((targetMessageId, index) => ({ sourceMessage: sourceMessages[index], targetMessageId })),
+    });
+  });
+
   it("reports the raw response count when Telegram returns fewer messages than requested", () => {
     // Given
     const sourceMessages = [{ id: 10 }, { id: 11 }, { id: 12 }];

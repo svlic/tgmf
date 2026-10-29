@@ -348,14 +348,6 @@ function getMessageMediaType(message: MessageLike): AllowedMediaType {
   return "document";
 }
 
-function isMessageAllowedByMediaTypes(message: MessageLike, allowedMediaTypes: Set<AllowedMediaType>) {
-  if (allowedMediaTypes.size === 0) {
-    return true;
-  }
-
-  return allowedMediaTypes.has(getMessageMediaType(message));
-}
-
 function filterMessagesByAllowedMediaTypes(messages: MessageLike[], allowedMediaTypes: Set<AllowedMediaType>) {
   if (allowedMediaTypes.size === 0) {
     return { allowed: messages, skipped: [] };
@@ -365,7 +357,7 @@ function filterMessagesByAllowedMediaTypes(messages: MessageLike[], allowedMedia
   const skipped: MessageLike[] = [];
 
   for (const message of messages) {
-    if (isMessageAllowedByMediaTypes(message, allowedMediaTypes)) {
+    if (allowedMediaTypes.has(getMessageMediaType(message))) {
       allowed.push(message);
     } else {
       skipped.push(message);
@@ -447,14 +439,6 @@ function buildCopiedMediaFilename(message: MessageLike) {
   return extension ? `telegram-media-${message.id}.${extension}` : `telegram-media-${message.id}`;
 }
 
-function getCopiedDocumentAttributes(message: MessageLike) {
-  if (isPhotoMessage(message)) {
-    return undefined;
-  }
-
-  return getDocumentFromMessage(message)?.attributes;
-}
-
 function getVideoAttribute(message: MessageLike) {
   return getDocumentFromMessage(message)?.attributes?.find(
     (attribute): attribute is Api.DocumentAttributeVideo => attribute instanceof Api.DocumentAttributeVideo,
@@ -474,7 +458,7 @@ function supportsVideoStreaming(message: MessageLike) {
 function buildCopiedMediaUpload(message: MessageLike, filePath: string, fileSize: number, filename: string): CopiedMediaUpload {
   return {
     file: new CustomFile(filename, fileSize, filePath),
-    attributes: getCopiedDocumentAttributes(message),
+    attributes: getDocumentFromMessage(message)?.attributes,
     supportsStreaming: supportsVideoStreaming(message),
   };
 }
@@ -549,7 +533,7 @@ export function mapForwardResponse(
   forwardableMessages: ReadonlyArray<MessageLike & { id: number }>,
   sentMessages: ReadonlyArray<ReadonlyArray<{ readonly id?: number }> | { readonly id?: number }>,
 ): Pick<ForwardResult, "sent" | "responseCount"> {
-  const normalizedMessages = sentMessages.flatMap((message) => (Array.isArray(message) ? message : [message]));
+  const normalizedMessages = sentMessages.flat();
   return {
     sent: forwardableMessages.map((sourceMessage, index) => {
       const targetMessageId = normalizedMessages[index]?.id;

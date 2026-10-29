@@ -1,7 +1,7 @@
 import { assertCsrf } from "@/lib/csrf";
 import { accountRepository, withRepositoryError } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
-import { rethrowNextError } from "@/lib/next";
+import { unstable_rethrow as rethrowNextError } from "next/navigation";
 import { accountSchema } from "@/lib/validation/forms";
 
 export async function POST(request: Request) {

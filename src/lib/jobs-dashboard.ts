@@ -49,9 +49,8 @@ export function buildJobsOverviewSnapshot(): JobsOverviewSnapshot {
     : true;
 
   const activeJobs = jobs.filter((job) => ACTIVE_JOB_STATUSES.includes(job.status));
-  const activeJobIds = new Set(activeJobs.map((job) => job.id));
   const completedJobs = jobs.filter((job) => job.status === "completed");
-  const archivedJobs = jobs.filter((job) => !activeJobIds.has(job.id));
+  const archivedJobs = jobs.filter((job) => !ACTIVE_JOB_STATUSES.includes(job.status));
   const queuedJobs = jobs.filter((job) => QUEUED_JOB_STATUSES.includes(job.status));
   const failedJobs = jobs.filter((job) => job.status === "failed");
   const readyAccounts = accounts.filter((account) => account.login_state === "ready");

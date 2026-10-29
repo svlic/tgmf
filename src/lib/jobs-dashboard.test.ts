@@ -2,7 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getDb } from "@/lib/db/client";
 import { JOB_DETAIL_RECORD_LIMIT } from "@/lib/jobs-snapshots";
+import type { JobStatus } from "@/lib/types";
 
 const tempDirectory = mkdtempSync(join(tmpdir(), "tgmf-jobs-dashboard-"));
 process.env.DATABASE_URL = join(tempDirectory, "test.db");
@@ -18,6 +20,41 @@ describe("job dashboard repositories", () => {
   beforeAll(async () => {
     repositories = await import("@/lib/db/repositories");
     dashboard = await import("@/lib/jobs-dashboard");
+  });
+
+  it.each([
+    { statuses: [], active: [], archived: [] },
+    { statuses: ["paused", "failed", "draft", "running", "pending"], active: [0, 1, 2, 3, 4], archived: [] },
+    { statuses: ["cancelled", "completed"], active: [], archived: [0, 1] },
+    { statuses: ["completed", "failed", "cancelled", "pending", "draft", "paused", "running"], active: [1, 3, 4, 5, 6], archived: [0, 2] },
+  ])("preserves overview grouping and repository order for $statuses", ({ statuses, active, archived }) => {
+    const account = repositories.accountRepository.create({ label: "Overview", phoneNumber: "+10000000003" })!;
+    try {
+      const jobs = statuses.map((status) => {
+        const job = repositories.jobRepository.create({
+          accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+          startMessageId: 1, endMessageId: 3, jobOrder: "asc", mode: "forward", albumStrategy: "full_group",
+        })!;
+        return repositories.jobRepository.setStatus(job.id, status as JobStatus)!;
+      });
+      const order = repositories.jobRepository.list().filter((job) => job.account_id === account.id);
+      const snapshot = dashboard.buildJobsOverviewSnapshot();
+      const activeIds = active.map((index) => jobs[index].id);
+      const archivedIds = archived.map((index) => jobs[index].id);
+      expect(snapshot.active_jobs.map((job) => job.id)).toEqual(order.filter((job) => activeIds.includes(job.id)).map((job) => job.id));
+      expect(snapshot.archived_jobs.map((job) => job.id)).toEqual(order.filter((job) => archivedIds.includes(job.id)).map((job) => job.id));
+      expect(snapshot.stats).toEqual({
+        total: jobs.length, active: active.length,
+        queued: statuses.filter((status) => status === "pending" || status === "paused").length,
+        completed: statuses.filter((status) => status === "completed").length,
+        failed: statuses.filter((status) => status === "failed").length,
+      });
+      expect(snapshot.needs_polling).toBe(statuses.includes("pending") || statuses.includes("running"));
+      expect([...snapshot.active_jobs, ...snapshot.archived_jobs].every((job) => job.account_label === "Overview")).toBe(true);
+    } finally {
+      getDb().prepare("DELETE FROM sync_jobs WHERE account_id = ?").run(account.id);
+      repositories.accountRepository.delete(account.id);
+    }
   });
 
   it("returns only the latest bounded transfer records when a job has many records", () => {

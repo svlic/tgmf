@@ -1,7 +1,7 @@
 import { assertCsrf } from "@/lib/csrf";
 import { accountRepository } from "@/lib/db/repositories";
 import { fail, ok } from "@/lib/http";
-import { rethrowNextError } from "@/lib/next";
+import { unstable_rethrow as rethrowNextError } from "next/navigation";
 import { completePhoneCodeLogin } from "@/lib/telegram/service";
 import { verifyCodeSchema } from "@/lib/validation/forms";
 

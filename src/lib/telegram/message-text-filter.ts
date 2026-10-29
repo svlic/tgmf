@@ -31,7 +31,7 @@ function parseStringList(value: string) {
   }
 }
 
-function hasNestedQuantifier(pattern: string) {
+export function hasNestedQuantifier(pattern: string) {
   return /\([^)]*[+*][^)]*\)\s*(?:[+*]|\{\d*,?\d*\})/.test(pattern);
 }
 

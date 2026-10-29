@@ -5,10 +5,6 @@ import { accountRepository } from "@/lib/db/repositories";
 
 const TELEGRAM_LOG_PREFIX = "[telegram]";
 
-function isGramJsUpdateTimeout(error: Error) {
-  return error.message === "TIMEOUT";
-}
-
 export async function createTelegramClient(accountId: string, sessionOverride?: string) {
   const account = accountRepository.getById(accountId);
   if (!account) {
@@ -23,7 +19,7 @@ export async function createTelegramClient(accountId: string, sessionOverride?: 
   });
 
   client.onError = async (error) => {
-    if (isGramJsUpdateTimeout(error)) {
+    if (error.message === "TIMEOUT") {
       return;
     }
 

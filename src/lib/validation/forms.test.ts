@@ -50,4 +50,18 @@ describe("jobSchema message selection", () => {
     expect(result.sourceChannelRef).toBe("@source");
     expect(result.targetChannelRef).toBe("-100123");
   });
+
+  it.each([
+    { pattern: "(a+)+", accepted: false },
+    { pattern: "(ab*)*", accepted: false },
+    { pattern: "(a+){2,3}", accepted: false },
+    { pattern: "[", accepted: false },
+    { pattern: "(ab){2}", accepted: true },
+  ])("characterizes regex validation for $pattern", ({ pattern, accepted }) => {
+    for (const field of ["regexWhitelist", "regexBlacklist"]) {
+      expect(jobSchema.safeParse({
+        ...baseJob, startMessageId: 1, endMessageId: 3, [field]: [pattern],
+      }).success).toBe(accepted);
+    }
+  });
 });

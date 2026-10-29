@@ -5,6 +5,20 @@ import {
 } from "@/lib/telegram/message-text-filter";
 
 describe("filterMessagesByTextFilter", () => {
+  it.each([
+    { pattern: "(a+)+", allowed: ["abab", "keep"] },
+    { pattern: "(ab*)*", allowed: ["abab", "keep"] },
+    { pattern: "(a+){2,3}", allowed: ["abab", "keep"] },
+    { pattern: "[", allowed: ["abab", "keep"] },
+    { pattern: "(ab){2}", allowed: ["abab"] },
+  ])("ignores unsafe or invalid regex but retains safe $pattern", ({ pattern, allowed }) => {
+    const messages = [{ message: "abab" }, { message: "keep" }];
+    const filter = parseMessageTextFilterFromLists({
+      keywordWhitelist: [], keywordBlacklist: [], regexWhitelist: [pattern], regexBlacklist: [],
+    });
+    expect(filterMessagesByTextFilter(messages, filter).allowed).toEqual(allowed.map((message) => ({ message })));
+  });
+
   it("applies keyword blacklist before whitelist", () => {
     const filter = parseMessageTextFilterFromLists({
       keywordWhitelist: ["keep"],

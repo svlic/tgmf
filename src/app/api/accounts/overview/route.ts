@@ -1,6 +1,6 @@
 import { buildAccountsOverviewSnapshot } from "@/lib/accounts-dashboard";
 import { fail, ok } from "@/lib/http";
-import { rethrowNextError } from "@/lib/next";
+import { unstable_rethrow as rethrowNextError } from "next/navigation";
 
 export async function GET() {
   try {
