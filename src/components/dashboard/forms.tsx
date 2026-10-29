@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { notifyAccountsMutated, notifyJobsMutated } from "@/lib/client-events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Field, FieldDescription, FieldLabel, FieldMessage } from "@/components/
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CSRF_HEADER_NAME } from "@/lib/constants";
 import { ALLOWED_MEDIA_TYPES } from "@/lib/types";
-import type { SyncJobRow } from "@/lib/types";
+import type { SyncJobRow, TelegramLoginState } from "@/lib/types";
 
 type FormState = {
   error: string | null;
@@ -83,7 +83,7 @@ function ActionFeedback({ feedback }: { feedback: { message: string; tone: Feedb
   );
 }
 
-export function AccountCreateForm() {
+export function AccountCreateForm({ onCreated }: { onCreated?: (accountId: string) => void }) {
   const [state, setState] = useState<FormState>({ error: null, success: null });
   return (
     <form
@@ -99,13 +99,14 @@ export function AccountCreateForm() {
           apiIdOverride: String(formData.get("apiIdOverride") || ""),
           apiHashOverride: String(formData.get("apiHashOverride") || ""),
         };
-        const result = await submitJson("/api/accounts", payload);
+        const result = await submitJson<{ account: { id: string } }>("/api/accounts", payload);
         if (!result.ok) {
           setState({ error: result.error, success: null });
           return;
         }
-        setState({ error: null, success: "Account created" });
+        setState({ error: null, success: "Account created. Continue with Telegram login below." });
         form.reset();
+        onCreated?.(result.data.account.id);
         notifyAccountsMutated();
       }}
     >
@@ -117,16 +118,21 @@ export function AccountCreateForm() {
         <FieldLabel htmlFor="phoneNumber">Phone number</FieldLabel>
         <Input id="phoneNumber" name="phoneNumber" placeholder="+1 555 123 4567" required />
       </Field>
-      <Field>
-        <FieldLabel htmlFor="apiIdOverride">API ID override</FieldLabel>
-        <Input id="apiIdOverride" name="apiIdOverride" placeholder="Optional project-specific API ID" />
-        <FieldDescription>Leave blank to use the shared environment default.</FieldDescription>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="apiHashOverride">API hash override</FieldLabel>
-        <Input id="apiHashOverride" name="apiHashOverride" placeholder="Optional API hash override" />
-        <FieldDescription>Useful when isolating one account from the default app credentials.</FieldDescription>
-      </Field>
+      <details className="md:col-span-2 rounded-lg border border-border/70 p-4">
+        <summary className="cursor-pointer text-sm font-medium">Custom API credentials (optional)</summary>
+        <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="apiIdOverride">API ID override</FieldLabel>
+            <Input id="apiIdOverride" name="apiIdOverride" placeholder="Optional project-specific API ID" />
+            <FieldDescription>Leave blank to use the shared environment default.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="apiHashOverride">API hash override</FieldLabel>
+            <Input id="apiHashOverride" name="apiHashOverride" placeholder="Optional API hash override" />
+            <FieldDescription>Useful when isolating one account from the default app credentials.</FieldDescription>
+          </Field>
+        </div>
+      </details>
       <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-4 pt-2">
         <Button type="submit">Add account</Button>
         <FormFeedback state={state} />
@@ -156,12 +162,13 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
   const [state, setState] = useState<FormState>({ error: null, success: null });
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id ?? "");
   const [selection, setSelection] = useState<"range" | "search">("range");
+  const [mode, setMode] = useState<"forward" | "copy">("forward");
   const hasAccounts = accounts.length > 0;
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId) ?? accounts[0] ?? null;
 
   return (
     <form
-      className="grid gap-5 md:grid-cols-2"
+      className="space-y-6"
       onSubmit={async (event) => {
         event.preventDefault();
         setState({ error: null, success: null });
@@ -204,168 +211,202 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
         window.location.replace(`/jobs/${result.data.job.id}`);
       }}
     >
-      <fieldset className="contents" disabled={!hasAccounts} aria-disabled={!hasAccounts}>
-        <Field>
-          <FieldLabel htmlFor="accountId">Telegram account</FieldLabel>
-          <Select
-            id="accountId"
-            name="accountId"
-            value={selectedAccountId}
-            onChange={(event) => setSelectedAccountId(event.target.value)}
-            required
-          >
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.label} · {account.phoneNumber} · {account.dialogs.length} dialogs
-              </option>
-            ))}
-          </Select>
-          <FieldDescription>
-            Source and target suggestions below come from cached dialogs for the selected account. You can still type a username, peer ID, or invite ref manually.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="mode">Transfer mode</FieldLabel>
-          <Select id="mode" name="mode" defaultValue="forward">
-            <option value="forward">Forward</option>
-            <option value="copy">Copy</option>
-          </Select>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="sourceChannelRef">Source channel</FieldLabel>
-          <Input id="sourceChannelRef" name="sourceChannelRef" list="selected-account-dialogs" placeholder="username, peer ID, or invite ref" required />
-          <FieldDescription>
-            {selectedAccount ? `${selectedAccount.dialogs.length} cached dialogs available for ${selectedAccount.label}.` : "Select an account to use cached dialog suggestions."}
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="targetChannelRef">Target channel</FieldLabel>
-          <Input id="targetChannelRef" name="targetChannelRef" list="selected-account-dialogs" placeholder="username, peer ID, or invite ref" required />
-          <datalist id="selected-account-dialogs">
-            {selectedAccount?.dialogs.map((dialog) => (
-              <option key={`${dialog.peerId}-${dialog.title}`} value={getDialogRef(dialog)} label={`${dialog.title} · ${dialog.entityType}${dialog.isPublic ? " · public" : " · private"}`} />
-            ))}
-          </datalist>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="selection">Message selection</FieldLabel>
-          <Select
-            id="selection"
-            name="selection"
-            value={selection}
-            onChange={(event) => setSelection(event.target.value === "search" ? "search" : "range")}
-          >
-            <option value="range">ID range</option>
-            <option value="search">Telegram search</option>
-          </Select>
-          <FieldDescription>
-            Search uses Telegram&apos;s server-side query to pick candidates; keyword/regex and media filters still apply afterward.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="searchQuery">Search query</FieldLabel>
-          <Input
-            id="searchQuery"
-            name="searchQuery"
-            maxLength={512}
-            placeholder="Keywords Telegram should match"
-            disabled={selection !== "search"}
-            required={selection === "search"}
-          />
-          <FieldDescription>Required for search selection. Independent from keyword whitelist filters below.</FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>
-          <Input
-            id="startMessageId"
-            name="startMessageId"
-            type="number"
-            min={1}
-            placeholder="1"
-            required={selection === "range"}
-            aria-describedby="startMessageId-description"
-          />
-          <FieldDescription id="startMessageId-description">
-            {selection === "search"
-              ? "Optional bounds for search results (inclusive min ID)."
-              : "First message ID in the transfer range (inclusive)."}
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="endMessageId">End message ID</FieldLabel>
-          <Input
-            id="endMessageId"
-            name="endMessageId"
-            type="number"
-            min={1}
-            placeholder="100"
-            required={selection === "range"}
-            aria-describedby="endMessageId-description"
-          />
-          <FieldDescription id="endMessageId-description">
-            {selection === "search"
-              ? "Optional bounds for search results (inclusive max ID)."
-              : "Last message ID in the transfer range (inclusive)."}
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="jobOrder">Message order</FieldLabel>
-          <Select id="jobOrder" name="jobOrder" defaultValue="asc">
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
-          </Select>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="albumStrategy">Album strategy</FieldLabel>
-          <Select id="albumStrategy" name="albumStrategy" defaultValue="full_group">
-            <option value="full_group">full_group</option>
-            <option value="captioned_only">captioned_only</option>
-          </Select>
-          <FieldDescription>
-            full_group is not fully implemented yet—album media may be incomplete. captioned_only applies only inside Telegram albums; single messages are unaffected.
-          </FieldDescription>
-        </Field>
-        <Field className="md:col-span-2">
-          <FieldLabel htmlFor="delaySeconds">Delay between messages</FieldLabel>
-          <Input id="delaySeconds" name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="2" required />
-          <FieldDescription>Throttle sends when the target channel is rate sensitive.</FieldDescription>
-        </Field>
-        <Field className="md:col-span-2">
-          <FieldLabel>Allowed media types</FieldLabel>
-          <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/40 p-3 sm:grid-cols-2 lg:grid-cols-3">
-            {ALLOWED_MEDIA_TYPES.map((mediaType) => (
-              <label key={mediaType} className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-2 text-sm text-foreground">
-                <input type="checkbox" name="allowedMediaTypes" value={mediaType} className="size-4 rounded border-border text-foreground accent-foreground" />
-                <span>{mediaType}</span>
-              </label>
-            ))}
+      <fieldset className="space-y-6" disabled={!hasAccounts} aria-disabled={!hasAccounts}>
+        <fieldset className="grid gap-5 rounded-lg border border-border/70 p-5 md:grid-cols-2">
+          <legend className="px-2 text-lg font-semibold">1. Account and channels</legend>
+          <p className="text-sm text-muted-foreground md:col-span-2">Choose the account that can access both the source and target.</p>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="accountId">Telegram account</FieldLabel>
+            <Select id="accountId" name="accountId" value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)} required>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.label} · {account.phoneNumber} · {account.dialogs.length} dialogs
+                </option>
+              ))}
+            </Select>
+            <FieldDescription>
+              Source and target suggestions below come from cached dialogs for the selected account. You can still type a username, peer ID, or invite ref
+              manually.
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="sourceChannelRef">Source channel</FieldLabel>
+            <Input id="sourceChannelRef" name="sourceChannelRef" list="selected-account-dialogs" placeholder="username, peer ID, or invite ref" required />
+            <FieldDescription>
+              {selectedAccount
+                ? `${selectedAccount.dialogs.length} cached dialogs available for ${selectedAccount.label}.`
+                : "Select an account to use cached dialog suggestions."}
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="targetChannelRef">Target channel</FieldLabel>
+            <Input id="targetChannelRef" name="targetChannelRef" list="selected-account-dialogs" placeholder="username, peer ID, or invite ref" required />
+            <datalist id="selected-account-dialogs">
+              {selectedAccount?.dialogs.map((dialog) => (
+                <option
+                  key={`${dialog.peerId}-${dialog.title}`}
+                  value={getDialogRef(dialog)}
+                  label={`${dialog.title} · ${dialog.entityType}${dialog.isPublic ? " · public" : " · private"}`}
+                />
+              ))}
+            </datalist>
+          </Field>
+        </fieldset>
+        <fieldset className="grid gap-5 rounded-lg border border-border/70 p-5 md:grid-cols-2">
+          <legend className="px-2 text-lg font-semibold">2. Message selection</legend>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="selection">Message selection</FieldLabel>
+            <Select id="selection" name="selection" value={selection} onChange={(event) => setSelection(event.target.value === "search" ? "search" : "range")}>
+              <option value="range">ID range</option>
+              <option value="search">Telegram search</option>
+            </Select>
+            <FieldDescription>
+              Search uses Telegram&apos;s server-side query to pick candidates; keyword/regex and media filters still apply afterward.
+            </FieldDescription>
+          </Field>
+          <Field className="md:col-span-2" hidden={selection !== "search"}>
+            <FieldLabel htmlFor="searchQuery">Search query</FieldLabel>
+            <Input
+              id="searchQuery"
+              name="searchQuery"
+              maxLength={512}
+              placeholder="Keywords Telegram should match"
+              disabled={selection !== "search"}
+              required={selection === "search"}
+            />
+            <FieldDescription>Required for search selection. Independent from keyword whitelist filters below.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="startMessageId">Start message ID</FieldLabel>
+            <Input
+              id="startMessageId"
+              name="startMessageId"
+              type="number"
+              min={1}
+              placeholder="1"
+              required={selection === "range"}
+              aria-describedby="startMessageId-description"
+            />
+            <FieldDescription id="startMessageId-description">
+              {selection === "search" ? "Optional bounds for search results (inclusive min ID)." : "First message ID in the transfer range (inclusive)."}
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="endMessageId">End message ID</FieldLabel>
+            <Input
+              id="endMessageId"
+              name="endMessageId"
+              type="number"
+              min={1}
+              placeholder="100"
+              required={selection === "range"}
+              aria-describedby="endMessageId-description"
+            />
+            <FieldDescription id="endMessageId-description">
+              {selection === "search" ? "Optional bounds for search results (inclusive max ID)." : "Last message ID in the transfer range (inclusive)."}
+            </FieldDescription>
+          </Field>
+        </fieldset>
+        <fieldset className="grid gap-5 rounded-lg border border-border/70 p-5 md:grid-cols-2">
+          <legend className="px-2 text-lg font-semibold">3. Transfer settings</legend>
+          <Field>
+            <FieldLabel htmlFor="mode">Transfer mode</FieldLabel>
+            <Select id="mode" name="mode" value={mode} onChange={(event) => setMode(event.target.value === "copy" ? "copy" : "forward")}>
+              <option value="forward">Forward</option>
+              <option value="copy">Copy</option>
+            </Select>
+            <FieldDescription>
+              {mode === "forward"
+                ? "Forward messages with their original source attribution."
+                : "Send new copies without source attribution. Album members are copied individually."}
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="jobOrder">Message order</FieldLabel>
+            <Select id="jobOrder" name="jobOrder" defaultValue="asc">
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="albumStrategy">Album strategy</FieldLabel>
+            <Select id="albumStrategy" name="albumStrategy" defaultValue="full_group">
+              <option value="full_group">All eligible album members</option>
+              <option value="captioned_only">Only the member with a caption</option>
+            </Select>
+            <FieldDescription>
+              {mode === "forward"
+                ? "Forward selected album members together, within the message bounds and filters."
+                : "Copy selected album members separately; album grouping is not preserved."}{" "}
+              Caption selection only affects albums, not standalone messages.
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="delaySeconds">Delay between messages</FieldLabel>
+            <Input id="delaySeconds" name="delaySeconds" type="number" min={0} defaultValue={2} placeholder="2" required />
+            <FieldDescription>Throttle sends when the target channel is rate sensitive.</FieldDescription>
+          </Field>
+        </fieldset>
+        <fieldset className="space-y-4 rounded-lg border border-border/70 p-5">
+          <legend className="px-2 text-lg font-semibold">4. Filters (optional)</legend>
+          <p className="text-sm text-muted-foreground">
+            No filters are applied by default. Expand a section to configure filters; collapsing it keeps your values active.
+          </p>
+          <details className="rounded-lg border border-border/70 p-4">
+            <summary className="cursor-pointer text-sm font-medium">Media types</summary>
+            <div className="mt-4">
+              <Field className="md:col-span-2">
+                <FieldLabel>Allowed media types</FieldLabel>
+                <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/40 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {ALLOWED_MEDIA_TYPES.map((mediaType) => (
+                    <label key={mediaType} className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        name="allowedMediaTypes"
+                        value={mediaType}
+                        className="size-4 rounded border-border text-foreground accent-foreground"
+                      />
+                      <span>{mediaType}</span>
+                    </label>
+                  ))}
+                </div>
+                <FieldDescription>Leave all media types unchecked to allow every supported type with no filtering.</FieldDescription>
+              </Field>
+            </div>
+          </details>
+          <details className="rounded-lg border border-border/70 p-4">
+            <summary className="cursor-pointer text-sm font-medium">Keywords and regular expressions</summary>
+            <div className="mt-4 grid gap-5 lg:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="keywordWhitelist">Keyword whitelist</FieldLabel>
+                <Textarea id="keywordWhitelist" name="keywordWhitelist" placeholder="One keyword per line" />
+                <FieldDescription>If set, a message must contain at least one keyword or whitelist regex to be transferred.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="keywordBlacklist">Keyword blacklist</FieldLabel>
+                <Textarea id="keywordBlacklist" name="keywordBlacklist" placeholder="One keyword per line" />
+                <FieldDescription>Messages containing any blacklist keyword are skipped before whitelist checks.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="regexWhitelist">Regex whitelist</FieldLabel>
+                <Textarea id="regexWhitelist" name="regexWhitelist" placeholder="One regular expression per line" />
+                <FieldDescription>Regular expressions are matched against message text and captions.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="regexBlacklist">Regex blacklist</FieldLabel>
+                <Textarea id="regexBlacklist" name="regexBlacklist" placeholder="One regular expression per line" />
+                <FieldDescription>Blacklist regex matches take priority over whitelist matches.</FieldDescription>
+              </Field>
+            </div>
+          </details>
+        </fieldset>
+        <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+          <div className="space-y-2">
+            <Button type="submit" disabled={!hasAccounts}>
+              Create draft
+            </Button>
+            <p className="text-xs text-muted-foreground">Review the job details before starting the transfer.</p>
           </div>
-          <FieldDescription>Leave all media types unchecked to allow every supported type with no filtering.</FieldDescription>
-        </Field>
-        <div className="md:col-span-2 grid gap-5 lg:grid-cols-2">
-          <Field>
-            <FieldLabel htmlFor="keywordWhitelist">Keyword whitelist</FieldLabel>
-            <Textarea id="keywordWhitelist" name="keywordWhitelist" placeholder="One keyword per line" />
-            <FieldDescription>If set, a message must contain at least one keyword or whitelist regex to be transferred.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="keywordBlacklist">Keyword blacklist</FieldLabel>
-            <Textarea id="keywordBlacklist" name="keywordBlacklist" placeholder="One keyword per line" />
-            <FieldDescription>Messages containing any blacklist keyword are skipped before whitelist checks.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="regexWhitelist">Regex whitelist</FieldLabel>
-            <Textarea id="regexWhitelist" name="regexWhitelist" placeholder="One regular expression per line" />
-            <FieldDescription>Regular expressions are matched against message text and captions.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="regexBlacklist">Regex blacklist</FieldLabel>
-            <Textarea id="regexBlacklist" name="regexBlacklist" placeholder="One regular expression per line" />
-            <FieldDescription>Blacklist regex matches take priority over whitelist matches.</FieldDescription>
-          </Field>
-        </div>
-        <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-4 pt-2">
-          <Button type="submit" disabled={!hasAccounts}>Create job</Button>
           <FormFeedback state={state} />
         </div>
       </fieldset>
@@ -373,16 +414,40 @@ export function JobCreateForm({ accounts }: { accounts: JobAccountOption[] }) {
   );
 }
 
-export function AccountActionButtons({ accountId, accountLabel }: { accountId: string; accountLabel: string }) {
+export function AccountActionButtons({
+  accountId,
+  accountLabel,
+  loginState,
+  focusLogin = false,
+}: {
+  accountId: string;
+  accountLabel: string;
+  loginState: TelegramLoginState;
+  focusLogin?: boolean;
+}) {
   const phoneCodeId = useId();
   const passwordId = useId();
   const [feedback, setFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [phoneCode, setPhoneCode] = useState("");
   const [password, setPassword] = useState("");
+  const loginPanelRef = useRef<HTMLDivElement>(null);
   const disabled = pendingAction !== null;
+  const ready = loginState === "ready";
 
-  async function runAccountAction<TData>(action: string, loadingMessage: string, request: () => Promise<JsonResult<TData>>, onSuccess: (data: TData) => string) {
+  useEffect(() => {
+    if (focusLogin) {
+      loginPanelRef.current?.querySelector("button")?.focus();
+      loginPanelRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [focusLogin]);
+
+  async function runAccountAction<TData>(
+    action: string,
+    loadingMessage: string,
+    request: () => Promise<JsonResult<TData>>,
+    onSuccess: (data: TData) => string,
+  ) {
     setPendingAction(action);
     setFeedback({ message: loadingMessage, tone: "default" });
     try {
@@ -403,133 +468,134 @@ export function AccountActionButtons({ accountId, accountLabel }: { accountId: s
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border border-border/70 bg-background/75 p-3">
+    <div ref={loginPanelRef} className="grid gap-3 rounded-lg border border-border/70 bg-background/75 p-3">
+      <p className="text-sm text-muted-foreground">
+        {ready
+          ? "Telegram login complete. Refresh dialogs to choose channels for a transfer job."
+          : loginState === "awaiting_code"
+            ? "Step 2 of 3 · Enter the verification code sent to your Telegram app."
+            : loginState === "awaiting_password"
+              ? "Step 3 of 3 · Telegram requires your two-factor password."
+              : loginState === "reauth_required"
+                ? "Your session needs renewal. Request a new verification code to log in again."
+                : "Step 1 of 3 · Request a Telegram verification code. Two-factor verification is only shown if required."}
+      </p>
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={disabled}
-          onClick={() => {
-            void runAccountAction(
-              "connectivity",
-              "Checking connectivity...",
-              () => submitJson(`/api/accounts/${accountId}/connectivity`, {}),
-              () => {
-                notifyAccountsMutated();
-                return "Connectivity checked";
-              },
-            );
-          }}
-        >
-          {pendingAction === "connectivity" ? "Testing..." : "Test connection"}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={disabled}
-          onClick={() => {
-            void runAccountAction(
-              "start-login",
-              "Requesting Telegram verification code...",
-              () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/start-login`, {}),
-              () => {
-                notifyAccountsMutated();
-                return "Verification code requested. Enter the code from Telegram below.";
-              },
-            );
-          }}
-        >
-          {pendingAction === "start-login" ? "Requesting code..." : "Start login"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={disabled}
-          onClick={async () => {
-            const refreshed = await runAccountAction(
-              "refresh-dialogs",
-              "Refreshing dialogs...",
-              () => submitJson<{ dialogs: unknown[] }>(`/api/accounts/${accountId}/dialogs`, {}),
-              (data) => `Fetched ${data.dialogs.length} dialogs`,
-            );
+        {ready ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              void runAccountAction(
+                "connectivity",
+                "Checking connectivity...",
+                () => submitJson(`/api/accounts/${accountId}/connectivity`, {}),
+                () => {
+                  notifyAccountsMutated();
+                  return "Connectivity checked";
+                },
+              );
+            }}
+          >
+            {pendingAction === "connectivity" ? "Testing..." : "Test connection"}
+          </Button>
+        ) : null}
+        {!ready ? (
+          <Button
+            variant={loginState === "awaiting_code" || loginState === "awaiting_password" ? "secondary" : "default"}
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              void runAccountAction(
+                "start-login",
+                "Requesting Telegram verification code...",
+                () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/start-login`, {}),
+                () => {
+                  setPhoneCode("");
+                  setPassword("");
+                  notifyAccountsMutated();
+                  return "Verification code requested. Enter the code from Telegram below.";
+                },
+              );
+            }}
+          >
+            {pendingAction === "start-login"
+              ? "Requesting code..."
+              : loginState === "awaiting_code" || loginState === "awaiting_password"
+                ? "Restart login"
+                : "Send verification code"}
+          </Button>
+        ) : null}
+        {ready ? (
+          <Button
+            size="sm"
+            disabled={disabled}
+            onClick={async () => {
+              const refreshed = await runAccountAction(
+                "refresh-dialogs",
+                "Refreshing dialogs...",
+                () => submitJson<{ dialogs: unknown[] }>(`/api/accounts/${accountId}/dialogs`, {}),
+                (data) => `Fetched ${data.dialogs.length} dialogs`,
+              );
 
-            if (refreshed) {
-              notifyAccountsMutated();
-            }
-          }}
-        >
-          {pendingAction === "refresh-dialogs" ? "Refreshing..." : "Refresh dialogs"}
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
-          disabled={disabled}
-          onClick={() => {
-            const confirmed = window.confirm(
-              `Delete account "${accountLabel}"? This removes its saved login session and cached dialogs.`,
-            );
-            if (!confirmed) {
-              return;
-            }
-
-            void runAccountAction(
-              "delete-account",
-              "Deleting account...",
-              () => submitJson<{ deleted: boolean }>(`/api/accounts/${accountId}`, {}, "DELETE"),
-              () => {
+              if (refreshed) {
                 notifyAccountsMutated();
-                return "Account deleted";
-              },
-            );
-          }}
-        >
-          {pendingAction === "delete-account" ? "Deleting..." : "Delete"}
-        </Button>
+              }
+            }}
+          >
+            {pendingAction === "refresh-dialogs" ? "Refreshing..." : "Refresh dialogs"}
+          </Button>
+        ) : null}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <form
-          className="rounded-lg border border-border/60 bg-card p-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const trimmedCode = phoneCode.trim();
-            if (!trimmedCode) {
-              setFeedback({ message: "Enter the Telegram verification code first.", tone: "error" });
-              return;
-            }
+      {loginState === "awaiting_code" ? (
+        <div>
+          <form
+            className="rounded-lg border border-border/60 bg-card p-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const trimmedCode = phoneCode.trim();
+              if (!trimmedCode) {
+                setFeedback({ message: "Enter the Telegram verification code first.", tone: "error" });
+                return;
+              }
 
-            void runAccountAction(
-              "verify-code",
-              "Verifying Telegram code...",
-              () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode: trimmedCode }),
-              (data) => {
-                setPhoneCode("");
-                notifyAccountsMutated();
-                return `Login state: ${data.loginState}`;
-              },
-            );
-          }}
-        >
-          <Field>
-            <FieldLabel htmlFor={phoneCodeId}>Verification code</FieldLabel>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                id={phoneCodeId}
-                value={phoneCode}
-                onChange={(event) => setPhoneCode(event.target.value)}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="Code from Telegram"
-                disabled={disabled}
-              />
-              <Button type="submit" size="sm" variant="secondary" disabled={disabled} className="h-11 shrink-0">
-                {pendingAction === "verify-code" ? "Verifying..." : "Verify code"}
-              </Button>
-            </div>
-            <FieldDescription>Use this after Start login sends a Telegram code.</FieldDescription>
-          </Field>
-        </form>
+              void runAccountAction(
+                "verify-code",
+                "Verifying Telegram code...",
+                () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-code`, { phoneCode: trimmedCode }),
+                (data) => {
+                  setPhoneCode("");
+                  notifyAccountsMutated();
+                  return data.loginState === "ready" ? "Telegram login complete." : "Code accepted. Enter your two-factor password.";
+                },
+              );
+            }}
+          >
+            <Field>
+              <FieldLabel htmlFor={phoneCodeId}>Verification code</FieldLabel>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id={phoneCodeId}
+                  value={phoneCode}
+                  onChange={(event) => setPhoneCode(event.target.value)}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="Code from Telegram"
+                  disabled={disabled}
+                  autoFocus
+                />
+                <Button type="submit" size="sm" disabled={disabled} className="h-11 shrink-0">
+                  {pendingAction === "verify-code" ? "Verifying..." : "Verify code"}
+                </Button>
+              </div>
+            </Field>
+          </form>
+        </div>
+      ) : null}
 
+      {loginState === "awaiting_password" ? (
         <form
           className="rounded-lg border border-border/60 bg-card p-3"
           onSubmit={(event) => {
@@ -538,15 +604,14 @@ export function AccountActionButtons({ accountId, accountLabel }: { accountId: s
               setFeedback({ message: "Enter the Telegram 2FA password first.", tone: "error" });
               return;
             }
-
             void runAccountAction(
               "verify-password",
               "Verifying Telegram 2FA password...",
-              () => submitJson<{ loginState: string }>(`/api/accounts/${accountId}/verify-password`, { password }),
-              (data) => {
+              () => submitJson(`/api/accounts/${accountId}/verify-password`, { password }),
+              () => {
                 setPassword("");
                 notifyAccountsMutated();
-                return `Login state: ${data.loginState}`;
+                return "Telegram login complete.";
               },
             );
           }}
@@ -562,15 +627,66 @@ export function AccountActionButtons({ accountId, accountLabel }: { accountId: s
                 autoComplete="current-password"
                 placeholder="Telegram 2FA password"
                 disabled={disabled}
+                autoFocus
               />
-              <Button type="submit" size="sm" variant="secondary" disabled={disabled} className="h-11 shrink-0">
+              <Button type="submit" size="sm" disabled={disabled} className="h-11 shrink-0">
                 {pendingAction === "verify-password" ? "Verifying 2FA..." : "Verify 2FA"}
               </Button>
             </div>
-            <FieldDescription>Only needed when Telegram requests cloud password verification.</FieldDescription>
           </Field>
         </form>
-      </div>
+      ) : null}
+
+      <details className="rounded-lg border border-border/60 p-3">
+        <summary className="cursor-pointer text-sm text-muted-foreground">Account management</summary>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {ready ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={disabled}
+              onClick={() => {
+                void runAccountAction(
+                  "start-login",
+                  "Requesting Telegram verification code...",
+                  () => submitJson(`/api/accounts/${accountId}/start-login`, {}),
+                  () => {
+                    setPhoneCode("");
+                    setPassword("");
+                    notifyAccountsMutated();
+                    return "Verification code requested.";
+                  },
+                );
+              }}
+            >
+              Log in again
+            </Button>
+          ) : null}
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              const confirmed = window.confirm(`Delete account "${accountLabel}"? This removes its saved login session and cached dialogs.`);
+              if (!confirmed) {
+                return;
+              }
+
+              void runAccountAction(
+                "delete-account",
+                "Deleting account...",
+                () => submitJson<{ deleted: boolean }>(`/api/accounts/${accountId}`, {}, "DELETE"),
+                () => {
+                  notifyAccountsMutated();
+                  return "Account deleted";
+                },
+              );
+            }}
+          >
+            {pendingAction === "delete-account" ? "Deleting..." : "Delete"}
+          </Button>
+        </div>
+      </details>
 
       <ActionFeedback feedback={feedback} />
     </div>
@@ -657,7 +773,7 @@ export function AccountActionPanel({
 }: {
   accountId: string;
   accountLabel: string;
-  loginState: string;
+  loginState: TelegramLoginState;
   phoneNumber: string;
 }) {
   return (
@@ -672,7 +788,7 @@ export function AccountActionPanel({
         </div>
       </CardHeader>
       <CardContent>
-        <AccountActionButtons accountId={accountId} accountLabel={accountLabel} />
+        <AccountActionButtons accountId={accountId} accountLabel={accountLabel} loginState={loginState} />
       </CardContent>
     </Card>
   );

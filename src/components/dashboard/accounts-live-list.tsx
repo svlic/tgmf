@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AccountActionButtons, AccountCreateForm } from "@/components/dashboard/forms";
 import { PollRefreshBanner } from "@/components/dashboard/poll-refresh-banner";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -19,6 +20,7 @@ type AccountsLiveListProps = {
 };
 
 export function AccountsLiveList({ initial }: AccountsLiveListProps) {
+  const [createdAccountId, setCreatedAccountId] = useState<string | null>(null);
   const { data, fetchError } = usePollJson({
     url: "/api/accounts/overview",
     intervalMs: ACCOUNTS_POLL_INTERVAL_MS,
@@ -39,7 +41,7 @@ export function AccountsLiveList({ initial }: AccountsLiveListProps) {
 
       <Card>
         <CardContent className="p-6">
-          <AccountCreateForm />
+          <AccountCreateForm onCreated={setCreatedAccountId} />
         </CardContent>
       </Card>
 
@@ -83,7 +85,12 @@ export function AccountsLiveList({ initial }: AccountsLiveListProps) {
                       </div>
                     </dl>
                   </div>
-                  <AccountActionButtons accountId={account.id} accountLabel={account.label} />
+                  <AccountActionButtons
+                    accountId={account.id}
+                    accountLabel={account.label}
+                    loginState={account.login_state}
+                    focusLogin={createdAccountId === account.id}
+                  />
                 </CardContent>
               </Card>
             </li>
