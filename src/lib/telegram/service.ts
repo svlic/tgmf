@@ -448,10 +448,6 @@ function supportsVideoStreaming(message: MessageLike) {
   return document?.mimeType?.startsWith("video/") ?? false;
 }
 
-function reportCopyPhase(onPhase: CopyPhaseCallback | undefined, details: CopyPhaseDetails) {
-  onPhase?.(details);
-}
-
 function createCopyProgressReporter(onPhase: CopyPhaseCallback | undefined, sourceMessageId: number, mediaBytes?: number) {
   let lastReportAt = 0;
   let lastProgressBucket = -1;
@@ -468,12 +464,8 @@ function createCopyProgressReporter(onPhase: CopyPhaseCallback | undefined, sour
 
     lastReportAt = now;
     lastProgressBucket = progressBucket;
-    reportCopyPhase(onPhase, { ...details, sourceMessageId, mediaBytes });
+    onPhase?.({ ...details, sourceMessageId, mediaBytes });
   };
-}
-
-async function createCopyTempDirectory(jobId: string, messageId: number) {
-  return mkdtemp(path.join(tmpdir(), `tgmf-${jobId}-${messageId}-`));
 }
 
 function isMessageInJobRange(message: MessageLike, job: SyncJobRow) {
@@ -578,7 +570,7 @@ async function copyMessage(
   const sourceMessageId = message.id;
   const caption = message.message ?? "";
   if (!message.media) {
-    reportCopyPhase(onPhase, { phase: "send_text", sourceMessageId });
+    onPhase?.({ phase: "send_text", sourceMessageId });
     const result = await telegramAttempt("send", () =>
       client.sendMessage(job.target_channel_ref, {
         message: caption,
@@ -586,21 +578,21 @@ async function copyMessage(
       }),
       [sourceMessageId], "send_text",
     );
-    reportCopyPhase(onPhase, { phase: "sent_text", sourceMessageId });
+    onPhase?.({ phase: "sent_text", sourceMessageId });
     return result.id ?? null;
   }
   if (!(message instanceof Api.Message)) {
     throw new Error("Copy media requires a full Telegram message");
   }
 
-  const tempDirectory = await createCopyTempDirectory(job.id, sourceMessageId);
+  const tempDirectory = await mkdtemp(path.join(tmpdir(), `tgmf-${job.id}-${sourceMessageId}-`));
   const mediaFilename = buildCopiedMediaFilename(message);
   const tempFilePath = path.join(tempDirectory, mediaFilename);
   assertPathInsideDirectory(tempFilePath, tempDirectory);
 
   try {
     const reportDownloadProgress = createCopyProgressReporter(onPhase, sourceMessageId);
-    reportCopyPhase(onPhase, { phase: "download_start", sourceMessageId });
+    onPhase?.({ phase: "download_start", sourceMessageId });
     const downloaded = await telegramAttempt("read", () =>
       client.downloadMedia(message, {
         outputFile: tempFilePath,
@@ -623,10 +615,10 @@ async function copyMessage(
       throw new Error(`Failed to download media from message ${sourceMessageId}`);
     }
 
-    reportCopyPhase(onPhase, { phase: "download_complete", sourceMessageId, mediaBytes: mediaSize });
+    onPhase?.({ phase: "download_complete", sourceMessageId, mediaBytes: mediaSize });
     const reportUploadProgress = createCopyProgressReporter(onPhase, sourceMessageId, mediaSize);
 
-    reportCopyPhase(onPhase, { phase: "upload_start", sourceMessageId, mediaBytes: mediaSize });
+    onPhase?.({ phase: "upload_start", sourceMessageId, mediaBytes: mediaSize });
     const result = await telegramAttempt("send", () =>
       client.sendFile(job.target_channel_ref, {
         file: new CustomFile(mediaFilename, mediaSize, tempFilePath),
@@ -641,7 +633,7 @@ async function copyMessage(
       }),
       [sourceMessageId], "upload_media",
     );
-    reportCopyPhase(onPhase, { phase: "sent_media", sourceMessageId, mediaBytes: mediaSize });
+    onPhase?.({ phase: "sent_media", sourceMessageId, mediaBytes: mediaSize });
 
     return result.id ?? null;
   } finally {
@@ -709,42 +701,41 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
   try {
     await execution.run("connect", () => client.connect(), { interruptible: false });
-    const messageIds =
-      job.selection === "search"
-        ? await (async () => {
-            const searchQuery = job.search_query?.trim() ?? "";
-            if (!searchQuery) {
-              throw new Error("search_query is required when selection is search");
-            }
+    let messageIds: number[];
+    if (job.selection === "search") {
+      const searchQuery = job.search_query?.trim() ?? "";
+      if (!searchQuery) {
+        throw new Error("search_query is required when selection is search");
+      }
 
-            const collectedIds = await collectSearchMessageIds({
-              searchQuery,
-              startMessageId: job.start_message_id,
-              endMessageId: job.end_message_id,
-              jobOrder: job.job_order,
-              fetchMessages: async (params) => {
-                const fetched = await telegramAttempt("read", () =>
-                  client.getMessages(job.source_channel_ref, {
-                    search: params.search,
-                    minId: params.minId,
-                    maxId: params.maxId,
-                    reverse: params.reverse,
-                  }),
-                  [], "search",
-                );
-                return Array.from(fetched as Iterable<MessageLike | null | undefined>).flatMap((message) =>
-                  message ? [message] : [],
-                );
-              },
-            });
+      messageIds = await collectSearchMessageIds({
+        searchQuery,
+        startMessageId: job.start_message_id,
+        endMessageId: job.end_message_id,
+        jobOrder: job.job_order,
+        fetchMessages: async (params) => {
+          const fetched = await telegramAttempt("read", () =>
+            client.getMessages(job.source_channel_ref, {
+              search: params.search,
+              minId: params.minId,
+              maxId: params.maxId,
+              reverse: params.reverse,
+            }),
+            [], "search",
+          );
+          return Array.from(fetched as Iterable<MessageLike | null | undefined>).flatMap((message) =>
+            message ? [message] : [],
+          );
+        },
+      });
 
-            jobRepository.setMessagePlan(job.id, {
-              totalMessages: collectedIds.length,
-              nextMessageId: collectedIds[0] ?? null,
-            });
-            return collectedIds;
-          })()
-        : buildMessageSequence(job);
+      jobRepository.setMessagePlan(job.id, {
+        totalMessages: messageIds.length,
+        nextMessageId: messageIds[0] ?? null,
+      });
+    } else {
+      messageIds = buildMessageSequence(job);
+    }
     const mediaFilter = parseAllowedMediaTypes(job.allowed_media_types);
     const textFilter = parseMessageTextFilterFromJob(job);
     const groupedMessagesCache = new Map<string, MessageLike[]>();

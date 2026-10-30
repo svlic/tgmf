@@ -149,11 +149,60 @@ describe("processJob album policy", () => {
     };
     vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
     const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
-    await processJob(job, "test-worker", () => undefined);
+    const phases: Record<string, unknown>[] = [];
+    await processJob(job, "test-worker", (details) => { if (details?.phase) phases.push(details); });
     expect(sends).toBe(1);
+    expect(phases.filter((details) => details.phase === "send_text" || details.phase === "sent_text")).toEqual([
+      { phase: "send_text", sourceMessageId: 10 },
+      { phase: "sent_text", sourceMessageId: 10 },
+      { phase: "send_text", sourceMessageId: 11 },
+    ]);
     expect(jobRepository.getById(job.id)).toMatchObject({ status: "pending", succeeded_messages: 1, processed_messages: 1 });
     expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, 10)?.status).toBe("sent");
     expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, 11)).toBeNull();
+  });
+
+  it.each([
+    { order: "asc" as const, results: [14, 10, 12, 10, 9, 16], expected: [10, 12, 14] },
+    { order: "desc" as const, results: [12, 14, 10, 12, 9, 16], expected: [14, 12, 10] },
+    { order: "asc" as const, results: [], expected: [] },
+  ])("executes search selections in $order order for $expected", async ({ order, results, expected }) => {
+    const deliveries: number[] = [];
+    const client = {
+      connect: async () => undefined, disconnect: async () => undefined,
+      getMessages: async (_peer: string, options: { search?: string; ids?: number[] }) =>
+        options.search
+          ? [...results.map((id) => ({ id })), null, undefined]
+          : (options.ids ?? []).map((id) => Object.assign(Object.create(Api.Message.prototype), { id, message: "text" }) as Api.Message),
+      forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+        deliveries.push(...options.messages);
+        return options.messages.map((id) => ({ id: id + 100 }));
+      },
+    };
+    vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+    const account = accountRepository.create({ label: "search-plan", phoneNumber: "+10000000075" })!;
+    const created = jobRepository.create({
+      accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+      selection: "search", searchQuery: " search phrase ", startMessageId: 10, endMessageId: 14,
+      mode: "forward", jobOrder: order, albumStrategy: "full_group", delaySeconds: 0,
+    })!;
+    const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+    const plans: Array<{ total: number; next: number | null }> = [];
+    await processJob(job, "test-worker", () => {
+      const current = jobRepository.getById(job.id)!;
+      plans.push({ total: current.total_messages, next: current.next_message_id });
+    });
+    expect(deliveries).toEqual(expected);
+    if (expected.length > 0) expect(plans[0]).toEqual({ total: 3, next: expected[0] });
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      status: "completed", total_messages: expected.length, processed_messages: expected.length,
+      succeeded_messages: expected.length, failed_messages: 0, next_message_id: null,
+    });
+    for (const id of expected) {
+      expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, id)).toMatchObject({
+        status: "sent", target_message_id: id + 100,
+      });
+    }
   });
 
   it("schedules FloodWait encountered during search before processing messages", async () => {
@@ -265,20 +314,25 @@ describe("processJob album policy", () => {
       connect: async () => undefined,
       disconnect: async () => undefined,
       getMessages: async () => [message],
-      downloadMedia: async (_message: Api.Message, options: { outputFile: string }) => {
+      downloadMedia: async (_message: Api.Message, options: {
+        outputFile: string; progressCallback: (downloaded: number, total: number) => void;
+      }) => {
         temporaryPath = options.outputFile;
         await writeFile(temporaryPath, "fixture-media");
+        options.progressCallback(5, 13);
         return temporaryPath;
       },
       sendFile: async (peer: string, options: {
         file: CustomFile; caption: string; formattingEntities: Api.TypeMessageEntity[];
         attributes?: Api.TypeDocumentAttribute[]; supportsStreaming: boolean; workers: number;
+        progressCallback: (progress: number) => void;
       }) => {
         upload = {
           peer, name: options.file.name, size: options.file.size, content: await readFile(options.file.path, "utf8"),
           caption: options.caption, entities: options.formattingEntities, attributes: options.attributes,
           supportsStreaming: options.supportsStreaming, workers: options.workers,
         };
+        options.progressCallback(0.4);
         if (scenario.failUpload) throw new Error("upload failed");
         return { id: 913 };
       },
@@ -290,7 +344,16 @@ describe("processJob album policy", () => {
       startMessageId: 10, endMessageId: 10, mode: "copy", jobOrder: "asc", albumStrategy: "full_group", delaySeconds: 0,
     })!;
     const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
-    await processJob(job, "test-worker", () => undefined);
+    const phases: Record<string, unknown>[] = [];
+    await processJob(job, "test-worker", (details) => { if (details?.phase) phases.push(details); });
+    expect(phases).toEqual([
+      { phase: "download_start", sourceMessageId: 10 },
+      { phase: "download_progress", sourceMessageId: 10, mediaBytes: undefined, downloadedBytes: "5", totalBytes: "13" },
+      { phase: "download_complete", sourceMessageId: 10, mediaBytes: 13 },
+      { phase: "upload_start", sourceMessageId: 10, mediaBytes: 13 },
+      { phase: "upload_progress", sourceMessageId: 10, mediaBytes: 13, progress: 0.4 },
+      ...(scenario.failUpload ? [] : [{ phase: "sent_media", sourceMessageId: 10, mediaBytes: 13 }]),
+    ]);
     expect(upload).toEqual({
       peer: "target", name: scenario.photo ? "telegram-photo-10.jpg" : "clip.mp4", size: 13, content: "fixture-media",
       caption: "caption", entities, attributes: scenario.photo ? undefined : attributes,
