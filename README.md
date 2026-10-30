@@ -105,6 +105,41 @@ docker compose logs -f web worker
 
 如果启动成功，就可以通过 `http://服务器IP:54001` 或反向代理后的域名访问，无需输入后台密码。请仅在可信网络开放，或通过防火墙、反向代理限制访问。
 
+### 任务卡住时如何排查
+
+Web 的任务控制动作和 Worker 的执行诊断输出为单行 JSON。日志只包含内部账号／任务／消息 ID、阶段、耗时、计数和安全错误码，不记录手机号、频道引用、消息内容、搜索词、API 凭据或会话。时间戳为 UTC（`Z`），北京时间需加 8 小时。
+
+先导出现场，尤其要在重新创建容器或升级前导出；Docker 日志随容器删除而消失：
+
+```bash copy Copy Diagnostics
+docker compose ps -a
+docker compose logs --since=30m --timestamps --no-color web worker > tgmf-diagnostics.log
+```
+
+用任务详情 URL 中的任务 ID 关联 Web 和 Worker 日志：
+
+```bash copy Copy Job Log Filter
+grep '"jobId":"job_替换为实际ID"' tgmf-diagnostics.log
+```
+
+| 日志事件／阶段 | 含义与排查方向 |
+| --- | --- |
+| `job_resume_requested` 后没有 `job_claimed` | 尚未被 Worker 领取；检查容器是否运行、前一个任务是否仍占用 Worker，以及账号是否处于限流冷却 |
+| `operation_waiting` | 每 10 秒报告一次长操作；`phase` 区分 `connect`、`search`、`fetch_messages`、`fetch_album`、`forward`、`download_media`、`upload_media`、`rate_limit`；看 `elapsedMs`、`idleMs` 和 `nextMessageId` |
+| `rate_limit` | 主动限速等待，不等于 Telegram 请求卡住；自适应间隔最高可达 300 秒 |
+| `job_flood_wait` | Telegram 明确限流；包含 `waitSeconds`、`floodWaitUntil`、`adaptiveIntervalMs`，冷却后重新排队；短 FloodWait 也交给调度器，不再由 SDK 静默等待 |
+| `copy_progress` | 媒体下载／上传进度，可区分大文件慢与完全没有进展 |
+| `operation_timeout` | 网络操作连续 120 秒无进展，或断开连接超过 10 秒；停止本次执行，避免永久占用 Worker |
+| `delivery_unknown` | 发送超时，远端可能已经成功；相关消息保存为终态 `warn`，继续任务也不会自动重发，必须先人工核对目标频道 |
+| `job_control_observed` / `job_released` | 旧执行已观察到暂停／恢复／取消或归属变化并释放；Pending 仅表示已排队，不表示旧网络请求已经结束 |
+| `worker_restart_required` / `worker_started` | 超时或清理异常后退出进程，由 Compose 自动重启，彻底释放 SDK 的遗留请求；非 Compose 运行需自行用进程管理器重启 |
+
+暂停后不再开始下一次 RPC。普通读取／限速等待会检查控制状态；已发出的发送、媒体传输和连接不能可靠撤回，会等待返回或无进展超时，期间仍有心跳和等待日志。媒体有进度时会续期，长时间主动限速不计入网络超时。
+
+仍由当前 Worker 持有的 running 任务在超时后会变成 failed；不会自动重试结果不明的发送，也没有新增 failed 任务的 Resume 入口。若期间已暂停或恢复排队，则保留该控制状态。这里修复的是无限等待和旧执行继续推进的问题，不代表所有崩溃恢复／部分相册恢复问题都已解决。
+
+Compose 为每个服务配置 10 MB × 5 的日志轮转，Worker 使用 `restart: unless-stopped`。这些设置需部署更新后的 Compose 文件才生效；日志保留时长取决于任务量，不保证固定天数。没有等待日志且心跳也停止时，应进一步检查进程退出、OOM、磁盘／SQLite 和宿主机负载；不要仅因没有新发送就断定网络请求卡住。
+
 ### 5. 升级、指定版本与迁移现有部署
 
 每次推送到 `main` 后，先等待 Actions 构建成功，再在服务器的部署目录执行：

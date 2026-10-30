@@ -358,6 +358,24 @@ describe("job transfer observability", () => {
 });
 
 describe("account send serialization", () => {
+  it("resumes only paused jobs without erasing progress or diagnostic errors", () => {
+    const { job } = createReadyAccountAndJob("controls", "+10000000018");
+    jobRepository.setStatus(job.id, "running", {
+      worker_id: "owner", processed_messages: 7, succeeded_messages: 7,
+      last_error_code: "telegram_delivery_unknown", last_error_message: "Check target before retrying",
+    });
+    expect(() => jobRepository.requestResume(job.id)).toThrow("Only paused");
+    jobRepository.requestPause(job.id);
+    expect(jobRepository.requestResume(job.id)).toMatchObject({
+      status: "pending", worker_id: null, processed_messages: 7, succeeded_messages: 7,
+      last_error_code: "telegram_delivery_unknown", last_error_message: "Check target before retrying",
+    });
+    expect(() => jobRepository.requestResume(job.id)).toThrow("Only paused");
+    jobRepository.setStatus(job.id, "completed");
+    expect(() => jobRepository.requestPause(job.id)).toThrow("Only pending or running");
+    expect(jobRepository.getById(job.id)?.status).toBe("completed");
+  });
+
   it("does not claim a second job while the same account has a running job", () => {
     // Given
     const account = accountRepository.create({ label: "serialized", phoneNumber: "+10000000015" });

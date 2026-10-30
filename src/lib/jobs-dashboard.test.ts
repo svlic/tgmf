@@ -161,7 +161,11 @@ describe("job dashboard repositories", () => {
       cancel_requested_at: "2026-01-01T00:00:00.000Z",
     });
 
-    const resumed = repositories.jobRepository.requestResume(job.id);
+    const resumed = repositories.jobRepository.setStatus(job.id, "pending", {
+      worker_id: null,
+      last_error_code: null,
+      last_error_message: null,
+    });
 
     expect(resumed?.worker_id).toBeNull();
     expect(resumed?.last_error_code).toBeNull();

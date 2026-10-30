@@ -2,8 +2,7 @@ import { StringSession } from "telegram/sessions";
 import { TelegramClient } from "telegram";
 import { LogLevel } from "telegram/extensions/Logger";
 import { accountRepository } from "@/lib/db/repositories";
-
-const TELEGRAM_LOG_PREFIX = "[telegram]";
+import { systemErrorFields, systemLog } from "@/lib/logger";
 
 export async function createTelegramClient(accountId: string, sessionOverride?: string) {
   const account = accountRepository.getById(accountId);
@@ -23,11 +22,7 @@ export async function createTelegramClient(accountId: string, sessionOverride?: 
       return;
     }
 
-    console.warn(TELEGRAM_LOG_PREFIX, "Client background error", {
-      accountId,
-      errorName: error.name,
-      errorMessage: error.message,
-    });
+    systemLog("warn", "telegram_background_error", { accountId, ...systemErrorFields(error) });
   };
   // GramJS logs background update-loop errors after calling onError; keep logging centralized above.
   client.setLogLevel(LogLevel.NONE);

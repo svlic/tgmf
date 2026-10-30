@@ -17,6 +17,7 @@ import type {
   JobStatus,
 } from "@/lib/types";
 import { generateId, nowIso, safeErrorMessage } from "@/lib/utils";
+import { systemLog } from "@/lib/logger";
 
 export type AccountInput = {
   label: string;
@@ -323,10 +324,22 @@ export const jobRepository = {
     return this.getById(id);
   },
   requestPause(id: string) {
-    return this.setStatus(id, "paused");
+    const result = getDb().prepare(
+      `UPDATE sync_jobs SET status = 'paused', updated_at = ?
+       WHERE id = ? AND status IN ('pending', 'running')`,
+    ).run(nowIso(), id);
+    if (!result.changes) throw new Error("Only pending or running jobs can be paused");
+    systemLog("info", "job_pause_requested", { jobId: id });
+    return this.getById(id);
   },
   requestResume(id: string) {
-    return this.setStatus(id, "pending", { worker_id: null, last_error_code: null, last_error_message: null });
+    const result = getDb().prepare(
+      `UPDATE sync_jobs SET status = 'pending', worker_id = NULL, updated_at = ?
+       WHERE id = ? AND status = 'paused'`,
+    ).run(nowIso(), id);
+    if (!result.changes) throw new Error("Only paused jobs can be resumed");
+    systemLog("info", "job_resume_requested", { jobId: id });
+    return this.getById(id);
   },
   requestCancel(id: string) {
     const job = this.getById(id);
@@ -334,6 +347,7 @@ export const jobRepository = {
       throw new Error("Job not found");
     }
 
+    systemLog("info", "job_cancel_requested", { jobId: id, status: job.status });
     if (job.status === "running") {
       return this.setStatus(id, "running", { cancel_requested_at: nowIso() });
     }
@@ -470,6 +484,10 @@ export const jobRepository = {
         adaptiveIntervalMs,
         updatedAt,
       );
+      systemLog("warn", "job_flood_wait", {
+        jobId: input.jobId, accountId: input.accountId, workerId: input.workerId,
+        waitSeconds: input.waitSeconds, adaptiveIntervalMs, floodWaitUntil,
+      });
       return true;
     })();
   },

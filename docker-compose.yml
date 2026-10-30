@@ -2,6 +2,11 @@ services:
   web:
     image: ghcr.io/svlic/tgmf:${IMAGE_TAG:-latest}
     command: npm run start
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     env_file:
       - .env
     ports:
@@ -12,6 +17,12 @@ services:
   worker:
     image: ghcr.io/svlic/tgmf:${IMAGE_TAG:-latest}
     command: npm run worker
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     env_file:
       - .env
     environment:

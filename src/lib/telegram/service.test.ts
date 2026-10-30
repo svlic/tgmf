@@ -28,6 +28,179 @@ describe("processJob album policy", () => {
     vi.unstubAllEnvs();
   });
 
+  it.each(["connect", "fetch_messages", "forward"] as const)("bounds a hung %s and preserves uncertain album deliveries", async (phase) => {
+    vi.useFakeTimers();
+    try {
+      let finishRequest!: (value: never) => void;
+      const hangingRequest = new Promise<never>((resolve) => { finishRequest = resolve; });
+      const messages = [
+        { id: 10, groupedId: "album" }, { id: 11, groupedId: "album" }, { id: 12 },
+      ].map((message) => Object.assign(Object.create(Api.Message.prototype), message) as Api.Message);
+      const attempted: number[][] = [];
+      const client = {
+        connect: async () => phase === "connect" ? hangingRequest : undefined,
+        disconnect: async () => undefined,
+        getMessages: async () => phase === "fetch_messages" ? hangingRequest : messages,
+        forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+          attempted.push(options.messages);
+          return hangingRequest;
+        },
+      };
+      vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+      const account = accountRepository.create({ label: "timeout", phoneNumber: "+10000000070" })!;
+      const created = jobRepository.create({
+        accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+        startMessageId: 10, endMessageId: 12, mode: "forward", jobOrder: "asc",
+        albumStrategy: "full_group", delaySeconds: 0,
+      })!;
+      const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+      const heartbeats: unknown[] = [];
+      const result = expect(processJob(job, "test-worker", (details) => heartbeats.push(details)))
+        .rejects.toMatchObject({ code: "operation_timeout", phase });
+      await vi.advanceTimersByTimeAsync(120_000);
+      await result;
+      jobRepository.failIfRunningByWorker({ jobId: job.id, workerId: "test-worker", errorMessage: "operation_timeout" });
+      expect(heartbeats.length).toBeGreaterThan(1);
+      expect(attempted).toEqual(phase === "forward" ? [[10, 11]] : []);
+      for (const id of [10, 11]) {
+        const record = transferRecordRepository.getByJobAndSourceMessageId(job.id, id);
+        if (phase === "forward") {
+          expect(record).toMatchObject({ status: "warn", target_message_id: null });
+          expect(record?.error_reason).toContain("delivery is unknown");
+        } else expect(record).toBeNull();
+      }
+      expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, 12)).toBeNull();
+      // A late RPC response cannot turn an uncertain delivery into a local success or continue the job.
+      finishRequest([{ id: 110 }, { id: 111 }] as never);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(jobRepository.getById(job.id)?.succeeded_messages).toBe(0);
+      expect(attempted).toHaveLength(phase === "forward" ? 1 : 0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops a hanging read after pause/resume and lets the queued run continue", async () => {
+    vi.useFakeTimers();
+    try {
+      const message = Object.assign(Object.create(Api.Message.prototype), { id: 10, message: "text" }) as Api.Message;
+      let reading = false;
+      let hang = true;
+      const deliveries: number[][] = [];
+      const client = {
+        connect: async () => undefined, disconnect: async () => undefined,
+        getMessages: async () => {
+          reading = true;
+          return hang ? new Promise<never>(() => undefined) : [message];
+        },
+        forwardMessages: async (_peer: string, options: { messages: number[] }) => {
+          deliveries.push(options.messages);
+          return [{ id: 110 }];
+        },
+      };
+      vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+      const account = accountRepository.create({ label: "resume-read", phoneNumber: "+10000000071" })!;
+      const created = jobRepository.create({
+        accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+        startMessageId: 10, endMessageId: 10, mode: "forward", jobOrder: "asc",
+        albumStrategy: "full_group", delaySeconds: 0,
+      })!;
+      const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+      const running = processJob(job, "test-worker", () => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(reading).toBe(true);
+      jobRepository.requestPause(job.id);
+      jobRepository.requestResume(job.id);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await running;
+      expect(jobRepository.getById(job.id)).toMatchObject({ status: "pending", processed_messages: 0 });
+      expect(deliveries).toEqual([]);
+      hang = false;
+      const claimed = jobRepository.claimNext("test-worker")!;
+      expect(claimed.id).toBe(job.id);
+      await processJob(claimed, "test-worker", () => undefined);
+      expect(deliveries).toEqual([[10]]);
+      expect(jobRepository.getById(job.id)).toMatchObject({ status: "completed", succeeded_messages: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not send another copy album member after pause/resume during a send", async () => {
+    const messages = [10, 11].map((id) => Object.assign(Object.create(Api.Message.prototype), {
+      id, groupedId: "album", message: "text",
+    }) as Api.Message);
+    const account = accountRepository.create({ label: "resume-copy", phoneNumber: "+10000000072" })!;
+    const created = jobRepository.create({
+      accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+      startMessageId: 10, endMessageId: 11, mode: "copy", jobOrder: "asc",
+      albumStrategy: "full_group", delaySeconds: 0,
+    })!;
+    let sends = 0;
+    const client = {
+      connect: async () => undefined, disconnect: async () => undefined,
+      getMessages: async () => messages,
+      sendMessage: async () => {
+        sends += 1;
+        jobRepository.requestPause(created.id);
+        jobRepository.requestResume(created.id);
+        return { id: 110 };
+      },
+    };
+    vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+    const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+    await processJob(job, "test-worker", () => undefined);
+    expect(sends).toBe(1);
+    expect(jobRepository.getById(job.id)).toMatchObject({ status: "pending", succeeded_messages: 1, processed_messages: 1 });
+    expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, 10)?.status).toBe("sent");
+    expect(transferRecordRepository.getByJobAndSourceMessageId(job.id, 11)).toBeNull();
+  });
+
+  it("schedules FloodWait encountered during search before processing messages", async () => {
+    const client = {
+      connect: async () => undefined, disconnect: async () => undefined,
+      getMessages: async () => { throw { errorCode: 420, seconds: 17, message: "FLOOD_WAIT_17" }; },
+    };
+    vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+    const account = accountRepository.create({ label: "search-wait", phoneNumber: "+10000000073" })!;
+    const created = jobRepository.create({
+      accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+      selection: "search", searchQuery: "private search phrase", mode: "forward", jobOrder: "asc",
+      albumStrategy: "full_group", delaySeconds: 0,
+    })!;
+    const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+    await processJob(job, "test-worker", () => undefined);
+    expect(jobRepository.getById(job.id)).toMatchObject({
+      status: "pending", flood_wait_events: 1, processed_messages: 0, send_attempts: 0,
+    });
+    expect(Date.parse(accountRepository.getById(account.id)!.flood_wait_until!)).toBeGreaterThan(Date.now());
+  });
+
+  it("allows a pacing wait longer than the network deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const message = Object.assign(Object.create(Api.Message.prototype), { id: 10, message: "text" }) as Api.Message;
+      const account = accountRepository.create({ label: "slow-pacing", phoneNumber: "+10000000074" })!;
+      const created = jobRepository.create({
+        accountId: account.id, sourceChannelRef: "source", targetChannelRef: "target",
+        startMessageId: 10, endMessageId: 10, mode: "forward", jobOrder: "asc",
+        albumStrategy: "full_group", delaySeconds: 150,
+      })!;
+      const client = {
+        connect: async () => undefined, disconnect: async () => undefined,
+        getMessages: async () => [message], forwardMessages: async () => [{ id: 110 }],
+      };
+      vi.mocked(createTelegramClient).mockResolvedValue({ client } as unknown as Awaited<ReturnType<typeof createTelegramClient>>);
+      const job = jobRepository.setStatus(created.id, "running", { worker_id: "test-worker" })!;
+      const result = processJob(job, "test-worker", () => undefined);
+      await vi.advanceTimersByTimeAsync(150_000);
+      await result;
+      expect(jobRepository.getById(job.id)).toMatchObject({ status: "completed", succeeded_messages: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     { allowedMediaTypes: [] as const, sentIds: [10, 11, 12] },
     { allowedMediaTypes: ["photo"] as const, sentIds: [10] },
@@ -274,11 +447,12 @@ describe("processJob album policy", () => {
           error_reason: targetId === null ? "Telegram did not return a target message id" : null,
         });
       }
-      expect(warning.mock.calls).toEqual([["Telegram forward response could not be fully mapped", {
+      expect(warning.mock.calls.map(([line]) => JSON.parse(line as string))).toMatchObject([{
+        event: "forward_mapping_incomplete", level: "warn",
         jobId: job.id, sourceCount: 3, responseCount: 3, mappedCount: 2, unmappedCount: 1,
         sourceMessageIdSample: [21, 22, 23], sourceMessageIdsOmitted: 0,
         mappedTargetMessageIdSample: [901, 703], mappedTargetMessageIdsOmitted: 0,
-      }]]);
+      }]);
       await processJob(job, "test-worker", () => undefined);
       expect(deliveries).toEqual([[21, 22, 23]]);
     } finally {

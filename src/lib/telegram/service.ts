@@ -10,7 +10,6 @@ import {
   telegramLoginSessionRepository,
   transferRecordRepository,
   jobRepository,
-  workerRepository,
 } from "@/lib/db/repositories";
 import { normalizeAllowedMediaType } from "@/lib/media-types";
 import type { AllowedMediaType, DialogCacheRow, SyncJobRow } from "@/lib/types";
@@ -29,6 +28,7 @@ import {
 } from "@/lib/telegram/transfer-outcome";
 import { getTelegramFloodWaitSeconds } from "@/lib/telegram/flood-wait";
 import { AccountSendLimiter } from "@/lib/telegram/send-limiter";
+import { JobExecution, JobExecutionError } from "@/lib/telegram/job-execution";
 
 export type StartLoginResult = {
   loginState: "awaiting_code";
@@ -76,7 +76,7 @@ type CopyPhaseDetails = {
 
 type CopyPhaseCallback = (details: CopyPhaseDetails) => void;
 type TelegramAttemptKind = "read" | "send" | "forward";
-type TelegramAttempt = <T>(kind: TelegramAttemptKind, attempt: () => Promise<T>) => Promise<T>;
+type TelegramAttempt = <T>(kind: TelegramAttemptKind, attempt: () => Promise<T>, sourceMessageIds?: number[], phase?: string) => Promise<T>;
 
 export function shouldRecordTelegramSuccess(kind: TelegramAttemptKind): boolean {
   return kind !== "read";
@@ -300,7 +300,6 @@ function parseAllowedMediaTypes(value: string) {
 
 const COPY_PROGRESS_REPORT_INTERVAL_MS = 2_000;
 const COPY_PROGRESS_REPORT_PERCENT_STEP = 5;
-const TELEGRAM_TRANSFER_LOG_PREFIX = "[telegram-transfer]";
 
 function getMessageMediaType(message: MessageLike): AllowedMediaType {
   if (!message.media) {
@@ -465,7 +464,6 @@ function buildCopiedMediaUpload(message: MessageLike, filePath: string, fileSize
 
 function reportCopyPhase(onPhase: CopyPhaseCallback | undefined, details: CopyPhaseDetails) {
   onPhase?.(details);
-  console.info(TELEGRAM_TRANSFER_LOG_PREFIX, "Copy media phase", details);
 }
 
 function createCopyProgressReporter(onPhase: CopyPhaseCallback | undefined, sourceMessageId: number, mediaBytes?: number) {
@@ -520,6 +518,7 @@ async function fetchAlbumMessages(
       maxId: sourceMessageId + 10,
       limit: 25,
     }),
+    [], "fetch_album",
   );
   const messages = Array.from(nearby as Iterable<MessageLike>).filter(
     (message) => getGroupedIdKey(message) === groupedId
@@ -567,6 +566,7 @@ async function forwardMessages(
         fromPeer: job.source_channel_ref,
         messages: sourceMessageIds,
       }),
+    sourceMessageIds,
   );
 
   return {
@@ -598,6 +598,7 @@ async function copyMessage(
         message: caption,
         formattingEntities: message.entities,
       }),
+      [sourceMessageId], "send_text",
     );
     reportCopyPhase(onPhase, { phase: "sent_text", sourceMessageId });
     return result.id ?? null;
@@ -625,6 +626,7 @@ async function copyMessage(
           });
         },
       }),
+      [], "download_media",
     );
     if (typeof downloaded !== "string" || path.resolve(downloaded) !== path.resolve(tempFilePath)) {
       throw new Error(`Failed to download media from message ${sourceMessageId}`);
@@ -652,6 +654,7 @@ async function copyMessage(
           reportUploadProgress({ phase: "upload_progress", progress });
         },
       }),
+      [sourceMessageId], "upload_media",
     );
     reportCopyPhase(onPhase, { phase: "sent_media", sourceMessageId, mediaBytes: mediaSize });
 
@@ -661,35 +664,66 @@ async function copyMessage(
   }
 }
 
-export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat: () => void) {
+export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat: (details?: Record<string, unknown>) => void) {
+  const execution = new JobExecution(job, workerId, onHeartbeat);
   const { client } = await createTelegramClient(job.account_id);
+  // Surface even short waits to our scheduler instead of silently occupying the only Worker.
+  client.floodSleepThreshold = 0;
   const configuredIntervalMs = job.delay_seconds * 1_000;
-  const telegramAttempt: TelegramAttempt = (kind, attempt) => {
+  const telegramAttempt: TelegramAttempt = async (kind, attempt, sourceMessageIds = [], phase = kind) => {
     const account = accountRepository.getById(job.account_id);
     const minimumIntervalMs = Math.max(configuredIntervalMs, account?.adaptive_interval_ms ?? 0);
-    return accountSendLimiter.run(job.account_id, minimumIntervalMs, async () => {
-      if (kind !== "read") {
-        const ownsJob = jobRepository.recordSendAttempt({
-          jobId: job.id,
-          accountId: job.account_id,
-          workerId,
-          attemptedAt: nowIso(),
-          forward: kind === "forward",
-        });
-        if (!ownsJob) {
-          throw new Error("Worker no longer owns this job");
+    // Only one job executes in this Worker. Keep pacing separate from the network deadline.
+    await execution.run("rate_limit", () => accountSendLimiter.run(job.account_id, minimumIntervalMs, async () => undefined), {
+      timeoutMs: minimumIntervalMs + 10_000,
+    });
+    try {
+      const result = await execution.run(phase, async () => {
+        if (kind !== "read") {
+          const ownsJob = jobRepository.recordSendAttempt({
+            jobId: job.id,
+            accountId: job.account_id,
+            workerId,
+            attemptedAt: nowIso(),
+            forward: kind === "forward",
+          });
+          if (!ownsJob) {
+            throw new JobExecutionError("control_changed", kind);
+          }
         }
-      }
-      const result = await attempt();
+        return attempt();
+      }, { interruptible: kind === "read" && phase !== "download_media" });
       if (shouldRecordTelegramSuccess(kind)) {
         accountRepository.recordTelegramSuccess(job.account_id, configuredIntervalMs);
       }
       return result;
-    });
+    } catch (error) {
+      if (error instanceof JobExecutionError && error.code === "operation_timeout" && kind !== "read") {
+        // A lost response is not evidence of a failed send. Do not automatically resend it on resume.
+        let uncertainCount = 0;
+        for (const sourceMessageId of sourceMessageIds) {
+          const existing = transferRecordRepository.getByJobAndSourceMessageId(job.id, sourceMessageId);
+          if (existing && TERMINAL_TRANSFER_STATUSES.has(existing.status)) continue;
+          transferRecordRepository.upsert({
+            jobId: job.id, sourceMessageId, status: "warn",
+            errorReason: "Send timed out; Telegram delivery is unknown. Check the target before retrying.",
+          });
+          uncertainCount += 1;
+        }
+        jobRepository.recordProgress(job.id, {
+          nextMessageId: execution.sourceMessageId,
+          skippedIncrement: uncertainCount,
+          lastErrorCode: "telegram_delivery_unknown",
+          lastErrorMessage: "Send timed out; check target messages before retrying",
+        });
+        execution.log("error", "delivery_unknown", { kind, messageCount: uncertainCount });
+      }
+      throw error;
+    }
   };
 
   try {
-    await client.connect();
+    await execution.run("connect", () => client.connect(), { interruptible: false });
     const messageIds =
       job.selection === "search"
         ? await (async () => {
@@ -711,6 +745,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
                     maxId: params.maxId,
                     reverse: params.reverse,
                   }),
+                  [], "search",
                 );
                 return Array.from(fetched as Iterable<MessageLike | null | undefined>).flatMap((message) =>
                   message ? [message] : [],
@@ -765,6 +800,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
 
       const fetched = await telegramAttempt("read", () =>
         client.getMessages(job.source_channel_ref, { ids: uncachedIds }),
+        [], "fetch_messages",
       );
       const fetchedMessages = Array.isArray(fetched)
         ? fetched.flatMap((message) => (message ? [message as MessageLike] : []))
@@ -795,6 +831,8 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
       }
 
       const messageId = messageIds[index];
+      execution.sourceMessageId = messageId;
+      execution.assertActive();
       onHeartbeat();
 
       try {
@@ -977,8 +1015,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
             forwardUnmappedIncrement: undelivered.length,
           });
           if (undelivered.length > 0) {
-            console.warn("Telegram forward response could not be fully mapped", {
-              jobId: job.id,
+            execution.log("warn", "forward_mapping_incomplete", {
               sourceCount: forwardResult.sent.length,
               responseCount: forwardResult.responseCount,
               mappedCount: delivered.length,
@@ -1012,12 +1049,9 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           for (const copyableMessage of pendingCopyMessages) {
             try {
               const targetMessageId = await copyMessage(client, job, copyableMessage, telegramAttempt, (details) => {
-                onHeartbeat();
-                workerRepository.heartbeat(workerId, "running", job.id, {
-                  ...details,
-                  updatedAt: nowIso(),
-                  pid: process.pid,
-                });
+                execution.progress();
+                onHeartbeat(details);
+                execution.log("info", "copy_progress", details);
               });
               const copyOutcome = classifyCopyDelivery(targetMessageId);
               if (copyOutcome.outcome === "sent") {
@@ -1040,6 +1074,16 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
                 });
               }
             } catch (copyError) {
+              if (copyError instanceof JobExecutionError) {
+                // Preserve already-confirmed members when control changes or a later member times out.
+                jobRepository.recordProgress(job.id, {
+                  nextMessageId: messageId,
+                  succeededIncrement: copiedCount,
+                  failedIncrement: copyFailureCount,
+                  skippedIncrement: skippedByAlbumPolicy + skippedByFilters + copySkippedCount,
+                });
+                throw copyError;
+              }
               if (getTelegramFloodWaitSeconds(copyError) !== null) {
                 throw copyError;
               }
@@ -1067,6 +1111,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           });
         }
       } catch (error) { // no-excuse-ok: catch - Telegram RPC errors are narrowed by getTelegramFloodWaitSeconds.
+        if (error instanceof JobExecutionError) throw error;
         const floodWaitSeconds = getTelegramFloodWaitSeconds(error);
         if (floodWaitSeconds !== null) {
           const errorMessage = safeErrorMessage(error);
@@ -1103,6 +1148,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
       throw new Error("Job no longer exists");
     }
 
+    execution.assertActive();
     const finalStatus = resolveSyncJobFinalStatus(latestJob.failed_messages);
 
     jobRepository.setStatus(job.id, finalStatus, {
@@ -1110,7 +1156,37 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
       next_message_id: null,
       finished_at: nowIso(),
     });
+  } catch (error) {
+    // Setup/search can also encounter FloodWait, before entering the message loop.
+    const floodWaitSeconds = getTelegramFloodWaitSeconds(error);
+    if (floodWaitSeconds !== null) {
+      jobRepository.deferForFloodWait({
+        jobId: job.id, accountId: job.account_id, workerId,
+        waitSeconds: floodWaitSeconds, errorMessage: safeErrorMessage(error),
+      });
+      return;
+    }
+    if (error instanceof JobExecutionError && error.code === "control_changed") {
+      const current = jobRepository.getById(job.id);
+      if (current?.status === "running" && current.worker_id === workerId && current.cancel_requested_at) {
+        jobRepository.setStatus(job.id, "cancelled", { finished_at: nowIso() });
+      }
+      execution.log("info", "job_control_observed", { status: current?.status ?? "missing" });
+      return;
+    }
+    throw error;
   } finally {
-    await client.disconnect();
+    try {
+      await execution.run("disconnect", () => client.disconnect(), { timeoutMs: 10_000, checkControl: false });
+    } catch {
+      // Continuing would risk a second execution while the old Telegram connection is still alive.
+      throw new WorkerCleanupError();
+    }
+  }
+}
+
+export class WorkerCleanupError extends Error {
+  constructor() {
+    super("Telegram cleanup failed; Worker must stop before processing another job");
   }
 }
