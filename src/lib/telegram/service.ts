@@ -59,12 +59,6 @@ type DocumentLike = {
   attributes?: Api.TypeDocumentAttribute[];
 };
 
-type CopiedMediaUpload = {
-  file: CustomFile;
-  attributes?: Api.TypeDocumentAttribute[];
-  supportsStreaming: boolean;
-};
-
 type CopyPhaseDetails = {
   phase: string;
   sourceMessageId: number;
@@ -454,14 +448,6 @@ function supportsVideoStreaming(message: MessageLike) {
   return document?.mimeType?.startsWith("video/") ?? false;
 }
 
-function buildCopiedMediaUpload(message: MessageLike, filePath: string, fileSize: number, filename: string): CopiedMediaUpload {
-  return {
-    file: new CustomFile(filename, fileSize, filePath),
-    attributes: getDocumentFromMessage(message)?.attributes,
-    supportsStreaming: supportsVideoStreaming(message),
-  };
-}
-
 function reportCopyPhase(onPhase: CopyPhaseCallback | undefined, details: CopyPhaseDetails) {
   onPhase?.(details);
 }
@@ -638,17 +624,16 @@ async function copyMessage(
     }
 
     reportCopyPhase(onPhase, { phase: "download_complete", sourceMessageId, mediaBytes: mediaSize });
-    const upload = buildCopiedMediaUpload(message, tempFilePath, mediaSize, mediaFilename);
     const reportUploadProgress = createCopyProgressReporter(onPhase, sourceMessageId, mediaSize);
 
     reportCopyPhase(onPhase, { phase: "upload_start", sourceMessageId, mediaBytes: mediaSize });
     const result = await telegramAttempt("send", () =>
       client.sendFile(job.target_channel_ref, {
-        file: upload.file,
+        file: new CustomFile(mediaFilename, mediaSize, tempFilePath),
         caption,
         formattingEntities: message.entities,
-        attributes: upload.attributes,
-        supportsStreaming: upload.supportsStreaming,
+        attributes: getDocumentFromMessage(message)?.attributes,
+        supportsStreaming: supportsVideoStreaming(message),
         workers: 1,
         progressCallback: (progress) => {
           reportUploadProgress({ phase: "upload_progress", progress });
