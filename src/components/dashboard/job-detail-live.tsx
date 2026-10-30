@@ -57,7 +57,7 @@ function FilterList({ label, values }: { label: string; values: string[] }) {
           <span className="text-sm text-muted-foreground">None</span>
         ) : (
           values.map((value) => (
-            <Badge key={value} variant="blue">
+            <Badge key={value} variant="blue" className="whitespace-pre-wrap break-all font-mono normal-case">
               {value}
             </Badge>
           ))
