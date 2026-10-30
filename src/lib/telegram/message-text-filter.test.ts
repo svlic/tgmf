@@ -6,6 +6,37 @@ import {
 
 describe("filterMessagesByTextFilter", () => {
   it.each([
+    "keywordWhitelist",
+    "keywordBlacklist",
+    "regexWhitelist",
+    "regexBlacklist",
+  ] as const)("removes zero-width characters before applying %s without changing messages", (rule) => {
+    const isWhitelist = rule.endsWith("Whitelist");
+    const messages = [
+      ...["\u200B", "\u200C", "\u200D", "\u2060", "\uFEFF"].map((character) => ({
+        message: `${character} 广${character}告 ${character}`,
+      })),
+      { message: "广 告" },
+      { message: "广\n告" },
+      { message: "普通消息" },
+    ];
+    const originals = messages.map((message) => ({ ...message }));
+    const filter = parseMessageTextFilterFromLists({
+      keywordWhitelist: [],
+      keywordBlacklist: [],
+      regexWhitelist: [],
+      regexBlacklist: [],
+      [rule]: [rule.startsWith("regex") ? "^广告$" : "广告"],
+    });
+
+    const result = filterMessagesByTextFilter(messages, filter);
+
+    expect(result.allowed).toEqual(isWhitelist ? originals.slice(0, 5) : originals.slice(5));
+    expect(result.skipped).toEqual(isWhitelist ? originals.slice(5) : originals.slice(0, 5));
+    expect(messages).toEqual(originals);
+  });
+
+  it.each([
     { pattern: "(a+)+", allowed: ["abab", "keep"] },
     { pattern: "(ab*)*", allowed: ["abab", "keep"] },
     { pattern: "(a+){2,3}", allowed: ["abab", "keep"] },

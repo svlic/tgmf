@@ -76,7 +76,7 @@ export function parseMessageTextFilterFromJob(job: SyncJobRow): MessageTextFilte
 }
 
 function getMessageText(message: TextFilterableMessage) {
-  return (message.message ?? "").trim();
+  return (message.message ?? "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim();
 }
 
 function matchesAnyKeyword(text: string, keywords: string[]) {
