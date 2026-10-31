@@ -113,17 +113,24 @@ Web 的任务控制动作和 Worker 的执行诊断输出为单行 JSON。日志
 
 ```bash copy Copy Diagnostics
 docker compose ps -a
+docker inspect "$(docker compose ps -aq worker)" --format '{{json .State}}' > worker-container-state.json
 docker compose logs --since=30m --timestamps --no-color web worker > tgmf-diagnostics.log
 ```
 
-用任务详情 URL 中的任务 ID 关联 Web 和 Worker 日志：
+用任务详情 URL 中的任务 ID 关联 Web 和 Worker 日志，同时保留进程级诊断（没有当前任务时这些日志不带任务 ID）：
 
 ```bash copy Copy Job Log Filter
-grep '"jobId":"job_替换为实际ID"' tgmf-diagnostics.log
+grep -E '"jobId":"job_替换为实际ID"|"event":"worker_' tgmf-diagnostics.log
 ```
 
 | 日志事件／阶段 | 含义与排查方向 |
 | --- | --- |
+| `worker_health` | 独立诊断线程约每 30 秒报告进程健康；`mainThreadSilentMs` 是距离主线程最后一次报到的时间，区别于 Telegram 操作的 `progressIdleMs`；包含进程 CPU、RSS 和主线程最近采样的堆内存 |
+| `worker_main_thread_unresponsive` | 主线程超过 10 秒未报到，独立线程每 5 秒继续报告；即使任务定时器停了也能留下现场。`mainStage` 是最后进入的边界，`phase` 是当时的任务阶段 |
+| `worker_main_thread_responsive_again` | 主线程重新报到；`eventLoopLagMsMaxSinceLastReport` 给出本轮采样到的最大事件循环延迟，而不是把卡住期间的旧内存样本当作实时样本 |
+| `worker_synchronous_stage_slow` | 某个同步边界返回时耗时超过 1 秒；`control_read` 为任务控制状态读取，`heartbeat_write` 为心跳落库，`claim_next` 为调度领取，`failure_write` 为失败状态落库，`log_write` 为任务日志输出 |
+| `job_control_worker_snapshot` | Web 接受 Pause／Resume 后记录任务状态、Worker 当前任务与阶段、`workerHeartbeatAgeMs` 和账号冷却截止时间；与 Worker 的 `job_control_detected`、`job_control_observed`、`job_released` 对照，区分“请求已接受”和“旧执行已停” |
+| `job_control_detected` | Worker 实际读到了控制／归属变化，记录它读到的状态、归属、取消标记和任务更新时间距今多久；不是 Web 单方面宣称操作成功 |
 | `job_resume_requested` 后没有 `job_claimed` | 尚未被 Worker 领取；检查容器是否运行、前一个任务是否仍占用 Worker，以及账号是否处于限流冷却 |
 | `operation_waiting` | 每 10 秒报告一次长操作；`phase` 区分 `connect`、`search`、`fetch_messages`、`fetch_album`、`forward`、`download_media`、`upload_media`、`rate_limit`；看 `elapsedMs`、`idleMs` 和 `nextMessageId` |
 | `rate_limit` | 主动限速等待，不等于 Telegram 请求卡住；自适应间隔最高可达 300 秒 |
@@ -133,6 +140,15 @@ grep '"jobId":"job_替换为实际ID"' tgmf-diagnostics.log
 | `delivery_unknown` | 发送超时，远端可能已经成功；相关消息保存为终态 `warn`，继续任务也不会自动重发，必须先人工核对目标频道 |
 | `job_control_observed` / `job_released` | 旧执行已观察到暂停／恢复／取消或归属变化并释放；Pending 仅表示已排队，不表示旧网络请求已经结束 |
 | `worker_restart_required` / `worker_started` | 超时或清理异常后退出进程，由 Compose 自动重启，彻底释放 SDK 的遗留请求；非 Compose 运行需自行用进程管理器重启 |
+
+**针对“卡住且 Pause→Resume 无效”的判断顺序：**
+
+1. `worker_health` 仍持续、`mainThreadSilentMs` 很小，但 `phase=fetch_album`、`operationElapsedMs` 持续增长：主事件循环还在运行，停留在异步读取／SDK 等待路径；仅凭这一点不能区分网络、Telegram 或 SDK 重连。
+2. 出现 `worker_main_thread_unresponsive`：主线程连控制检查和超时定时器都无法正常调度。`mainStage=control_read/heartbeat_write/...` 表示最后停留的同步边界；`mainStage=operation` 表示当时在操作调用中。边界和 CPU／内存是定位线索，不是自动断言 SQLite、网络或 GC 就是根因。
+3. Web 显示已排队，但快照中 Worker 心跳很旧，且没有 Worker 的 `job_control_detected`：没有证据表明旧执行已经处理控制变化；不要把 Pending 误认为已经恢复执行。若 `workerCurrentJobId` 是另一个任务，唯一 Worker 还占用在那个任务上。
+4. 连独立诊断都停止：检查 `worker-container-state.json` 的 `Running`、`OOMKilled`、`ExitCode` 和退出时间。诊断线程无法在整个进程／容器被杀、宿主机停止调度或日志管道阻塞时保证输出；不能把“没有日志”直接断定成某一种原因。`worker_diagnostics_failed` 表示诊断线程自身出错，这时也不能用缺失的诊断推断任务状态。
+
+独立线程直接写标准错误文件描述符，不经过主事件循环转发，也不读取 SQLite、会话或消息正文。它只负责观察，不会自动杀进程、改变任务状态或重发消息。
 
 暂停后不再开始下一次 RPC。普通读取／限速等待会检查控制状态；已发出的发送、媒体传输和连接不能可靠撤回，会等待返回或无进展超时，期间仍有心跳和等待日志。媒体有进度时会续期，长时间主动限速不计入网络超时。
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -358,6 +358,30 @@ describe("job transfer observability", () => {
 });
 
 describe("account send serialization", () => {
+  it("logs the worker state at resume without exposing account or message content", () => {
+    const { job } = createReadyAccountAndJob("private-label", "+10000000019");
+    jobRepository.setStatus(job.id, "paused", { worker_id: "blocked-worker" });
+    workerRepository.heartbeat("blocked-worker", "running", job.id, {
+      phase: "fetch_album", sourceMessageId: 600055, unrelated: "private-message-content",
+    });
+    getDb().prepare("UPDATE worker_heartbeats SET heartbeat_at = ?").run(new Date(Date.now() - 90_000).toISOString());
+    const output = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      expect(jobRepository.requestResume(job.id)?.status).toBe("pending");
+      const lines = output.mock.calls.map(([line]) => String(line));
+      const snapshot = lines.map((line) => JSON.parse(line)).find((event) => event.event === "job_control_worker_snapshot");
+      expect(snapshot).toMatchObject({
+        jobId: job.id, jobStatus: "pending", jobWorkerId: null,
+        workerId: "blocked-worker", workerStatus: "running", workerCurrentJobId: job.id,
+        workerPhase: "fetch_album", workerSourceMessageId: 600055, accountFloodWaitUntil: null,
+      });
+      expect(snapshot.workerHeartbeatAgeMs).toBeGreaterThanOrEqual(90_000);
+      expect(lines.join("\n")).not.toMatch(/private-label|10000000019|private-message-content/);
+    } finally {
+      output.mockRestore();
+    }
+  });
+
   it("resumes only paused jobs without erasing progress or diagnostic errors", () => {
     const { job } = createReadyAccountAndJob("controls", "+10000000018");
     jobRepository.setStatus(job.id, "running", {

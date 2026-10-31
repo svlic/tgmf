@@ -17,7 +17,28 @@ import type {
   JobStatus,
 } from "@/lib/types";
 import { generateId, nowIso, safeErrorMessage } from "@/lib/utils";
-import { systemLog } from "@/lib/logger";
+import { systemErrorFields, systemLog } from "@/lib/logger";
+
+function logControlWorkerSnapshot(jobId: string) {
+  // Optional diagnostics must not turn an accepted control action into an API failure.
+  try {
+    const job = jobRepository.getById(jobId);
+    const worker = workerRepository.getLatest();
+    const details = worker?.details_json ? JSON.parse(worker.details_json) : null;
+    const account = job ? accountRepository.getById(job.account_id) : null;
+    systemLog("info", "job_control_worker_snapshot", {
+      jobId, jobStatus: job?.status ?? null, jobWorkerId: job?.worker_id ?? null,
+      workerId: worker?.worker_id ?? null, workerStatus: worker?.status ?? null,
+      workerCurrentJobId: worker?.current_job_id ?? null,
+      workerHeartbeatAgeMs: worker ? Date.now() - Date.parse(worker.heartbeat_at) : null,
+      workerPhase: typeof details?.phase === "string" ? details.phase : null,
+      workerSourceMessageId: typeof details?.sourceMessageId === "number" ? details.sourceMessageId : null,
+      accountFloodWaitUntil: account?.flood_wait_until ?? null,
+    });
+  } catch (error) {
+    systemLog("warn", "job_control_snapshot_failed", { jobId, ...systemErrorFields(error) });
+  }
+}
 
 export type AccountInput = {
   label: string;
@@ -330,6 +351,7 @@ export const jobRepository = {
     ).run(nowIso(), id);
     if (!result.changes) throw new Error("Only pending or running jobs can be paused");
     systemLog("info", "job_pause_requested", { jobId: id });
+    logControlWorkerSnapshot(id);
     return this.getById(id);
   },
   requestResume(id: string) {
@@ -339,6 +361,7 @@ export const jobRepository = {
     ).run(nowIso(), id);
     if (!result.changes) throw new Error("Only paused jobs can be resumed");
     systemLog("info", "job_resume_requested", { jobId: id });
+    logControlWorkerSnapshot(id);
     return this.getById(id);
   },
   requestCancel(id: string) {

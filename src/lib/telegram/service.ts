@@ -1025,7 +1025,7 @@ export async function processJob(job: SyncJobRow, workerId: string, onHeartbeat:
           for (const copyableMessage of pendingCopyMessages) {
             try {
               const targetMessageId = await copyMessage(client, job, copyableMessage, telegramAttempt, (details) => {
-                execution.progress();
+                execution.progress(details.sourceMessageId);
                 onHeartbeat(details);
                 execution.log("info", "copy_progress", details);
               });

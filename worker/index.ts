@@ -4,26 +4,31 @@ import { processJob, WorkerCleanupError } from "@/lib/telegram/service";
 import { JobExecutionError } from "@/lib/telegram/job-execution";
 import { systemErrorFields, systemLog } from "@/lib/logger";
 import { generateId, nowIso, safeErrorMessage, sleep } from "@/lib/utils";
+import { startWorkerDiagnostics, updateWorkerDiagnostics, withWorkerDiagnosticStage } from "@/lib/worker-diagnostics";
 
 const workerId = process.env.WORKER_ID?.trim() || generateId("worker");
+const stopDiagnostics = startWorkerDiagnostics(workerId);
 let stopped = false;
 
 function heartbeat(status: "idle" | "running" | "stale", currentJobId?: string | null, details?: Record<string, unknown>) {
-  workerRepository.heartbeat(workerId, status, currentJobId ?? null, {
+  withWorkerDiagnosticStage("heartbeat_write", () => workerRepository.heartbeat(workerId, status, currentJobId ?? null, {
     ...details,
     updatedAt: nowIso(),
     pid: process.pid,
-  });
+  }));
 }
 
 async function runJob() {
-  const job = jobRepository.claimNext(workerId);
+  updateWorkerDiagnostics({ phase: "scheduler", mainStage: "scheduler" });
+  const job = withWorkerDiagnosticStage("claim_next", () => jobRepository.claimNext(workerId));
   if (!job) {
+    updateWorkerDiagnostics({ jobId: null, accountId: null, sourceMessageId: null, phase: "idle", mainStage: "idle", operationStartedAt: null, lastProgressAt: null });
     heartbeat("idle", null, { reason: "no_pending_jobs" });
     await sleep(WORKER_POLL_INTERVAL_MS);
     return;
   }
 
+  updateWorkerDiagnostics({ jobId: job.id, accountId: job.account_id, sourceMessageId: job.next_message_id, phase: "claimed" });
   heartbeat("running", job.id, { phase: "claimed" });
   systemLog("info", "job_claimed", { workerId, jobId: job.id, accountId: job.account_id, nextMessageId: job.next_message_id });
 
@@ -41,11 +46,12 @@ async function runJob() {
     systemLog("info", "job_released", { workerId, jobId: job.id, status: latestJob?.status ?? "unknown" });
   } catch (error) {
     const errorMessage = safeErrorMessage(error);
-    jobRepository.failIfRunningByWorker({
+    systemLog("error", "job_failure_handling_started", { workerId, jobId: job.id, ...systemErrorFields(error) });
+    withWorkerDiagnosticStage("failure_write", () => jobRepository.failIfRunningByWorker({
       jobId: job.id,
       workerId,
       errorMessage,
-    });
+    }));
     heartbeat("idle", null, {
       phase: "job_failed",
       jobId: job.id,
@@ -90,4 +96,4 @@ main().catch((error) => {
     hasError: true,
   });
   process.exitCode = 1;
-});
+}).finally(stopDiagnostics);
