@@ -76,7 +76,13 @@ export function parseMessageTextFilterFromJob(job: SyncJobRow): MessageTextFilte
 }
 
 function getMessageText(message: TextFilterableMessage) {
-  return (message.message ?? "").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim();
+  // Clean only the matching copy, including supplementary-plane selectors and tags.
+  // Keep ordinary whitespace so separate words and lines do not become one keyword.
+  return (message.message ?? "")
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cf}\p{Cc}]/gu, (character) =>
+      /^[\t\n\v\f\r]$/.test(character) ? character : "",
+    )
+    .trim();
 }
 
 function matchesAnyKeyword(text: string, keywords: string[]) {

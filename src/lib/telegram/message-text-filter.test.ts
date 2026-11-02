@@ -12,14 +12,28 @@ describe("filterMessagesByTextFilter", () => {
     "regexBlacklist",
   ] as const)("removes zero-width characters before applying %s without changing messages", (rule) => {
     const isWhitelist = rule.endsWith("Whitelist");
-    const messages = [
-      ...["\u200B", "\u200C", "\u200D", "\u2060", "\uFEFF"].map((character) => ({
-        message: `${character} 广${character}告 ${character}`,
-      })),
+    const hiddenCharacters = [
+      "\u200B", "\u200C", "\u200D", "\u2060", "\uFEFF",
+      "\uFE0E", "\uFE0F", "\u{E0100}", "\u{E01EF}", // Variation selectors.
+      "\u034F", "\u00AD", "\u061C", "\u180E", // Grapheme joiner, soft hyphen, format controls.
+      "\u200E", "\u202E", "\u2066", "\u2069", // Direction controls.
+      "\u115F", "\u3164", "\uFFA0", "\u{E0061}", // Fillers and emoji tags.
+      "\u0600", "\u{13430}", "\u{1D173}", // Other Unicode format controls.
+      "\u0000", "\u0008", "\u001B", "\u007F", "\u009F", // Non-whitespace controls.
+    ];
+    const matchingMessages = hiddenCharacters.map((character) => ({
+      message: `${character} 广${character}告 ${character}`,
+    }));
+    const otherMessages = [
       { message: "广 告" },
       { message: "广\n告" },
+      { message: "广\t告" },
+      { message: "广\r\n告" },
+      { message: "广\u00A0告" },
+      { message: "广\u0301告" }, // Visible combining accents are not stripped.
       { message: "普通消息" },
     ];
+    const messages = [...matchingMessages, ...otherMessages];
     const originals = messages.map((message) => ({ ...message }));
     const filter = parseMessageTextFilterFromLists({
       keywordWhitelist: [],
@@ -31,9 +45,24 @@ describe("filterMessagesByTextFilter", () => {
 
     const result = filterMessagesByTextFilter(messages, filter);
 
-    expect(result.allowed).toEqual(isWhitelist ? originals.slice(0, 5) : originals.slice(5));
-    expect(result.skipped).toEqual(isWhitelist ? originals.slice(5) : originals.slice(0, 5));
+    expect(result.allowed).toEqual(isWhitelist ? matchingMessages : otherMessages);
+    expect(result.skipped).toEqual(isWhitelist ? otherMessages : matchingMessages);
     expect(messages).toEqual(originals);
+  });
+
+  it("blocks the reported caption with interspersed variation selectors and joiners", () => {
+    const blocked = { message: "能否\uFE05去其他\uFE04省份\uFE0E:可以\uFE03\u2060\u200C\u034F" };
+    const allowed = { message: "能否去其他省份:不可以" };
+    const filter = parseMessageTextFilterFromLists({
+      keywordWhitelist: [], keywordBlacklist: [], regexWhitelist: [],
+      regexBlacklist: ["省份\\s*[:：]\\s*[是行能可🉑o]"],
+    });
+
+    const result = filterMessagesByTextFilter([blocked, allowed], filter);
+
+    expect(result.skipped).toEqual([blocked]);
+    expect(result.allowed).toEqual([allowed]);
+    expect(blocked.message).toBe("能否\uFE05去其他\uFE04省份\uFE0E:可以\uFE03\u2060\u200C\u034F");
   });
 
   it.each([
